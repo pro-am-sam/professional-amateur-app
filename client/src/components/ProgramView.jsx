@@ -63,16 +63,19 @@ export default function ProgramView({
 
       {activeDay && (
         <div className="whiteboard">
-          {activeDay.blocks.map((block, bi) => (
-            <BlockCard
-              key={bi}
-              block={block}
-              blockKey={`w${activeWeek.weekNumber}-d${activeDay.dayOrder}-b${block.letter}`}
-              programId={programId}
-              comments={comments}
-              onCommentsChange={onCommentsChange}
-            />
-          ))}
+          {activeDay.blocks.map((block, bi) => {
+            const blockKey = `w${activeWeek.weekNumber}-d${activeDay.dayOrder}-b${block.letter}`;
+            return (
+              <BlockCard
+                key={blockKey}
+                block={block}
+                blockKey={blockKey}
+                programId={programId}
+                comments={comments}
+                onCommentsChange={onCommentsChange}
+              />
+            );
+          })}
         </div>
       )}
     </div>
