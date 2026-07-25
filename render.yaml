@@ -8,6 +8,8 @@ services:
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: COACH_PASSWORD
+        sync: false
       - key: DATA_DIR
         value: /data
     disk:

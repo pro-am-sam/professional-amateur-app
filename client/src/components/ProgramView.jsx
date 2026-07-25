@@ -24,7 +24,7 @@ export default function ProgramView({
   return (
     <div>
       <button type="button" className="secondary back-link" onClick={onBack}>
-        ← Back to edit
+        ← Back
       </button>
 
       {programMeta?.clientName && (

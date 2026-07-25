@@ -173,6 +173,69 @@ form.card button[type="submit"] {
   background: #fff;
 }
 
+select.title-input {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 18px) center, calc(100% - 13px) center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 32px;
+}
+
+.nav-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.login-tabs {
+  margin-bottom: 20px;
+}
+
+.credentials-banner {
+  background: var(--chalk);
+  border: 1px solid var(--steel-soft);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+
+.credentials-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin: 8px 0;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.9rem;
+}
+
+.credentials-row code {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.credentials-hint {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin: 4px 0 10px;
+}
+
+.client-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
 .library-link {
   margin-bottom: 14px;
 }
@@ -408,6 +471,32 @@ button.library-item:hover:not(:disabled) {
 }
 
 .day-tabs .tab-active {
+  color: var(--navy);
+  border-bottom-color: var(--steel);
+  background: var(--white);
+}
+
+.login-tabs .tab {
+  flex: 1 1 auto;
+  padding: 10px 6px;
+  border: none;
+  border-radius: 9px 9px 0 0;
+  border-bottom: 3px solid var(--line);
+  background: var(--white);
+  font-family: "Barlow Condensed", sans-serif;
+  font-weight: 600;
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.login-tabs .tab:hover:not(.tab-active) {
+  color: var(--navy-3);
+  background: var(--chalk);
+}
+
+.login-tabs .tab-active {
   color: var(--navy);
   border-bottom-color: var(--steel);
   background: var(--white);

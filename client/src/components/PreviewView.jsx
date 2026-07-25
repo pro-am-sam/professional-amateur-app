@@ -1,17 +1,38 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+const NEW_CLIENT = "__new__";
 
 // Lets the coach sanity-check what Claude extracted before trusting it enough
 // to render as the final client-facing page. Deliberately plain/dense (like a
 // spreadsheet readout) so mistakes are easy to spot at a glance.
 export default function PreviewView({ program, onBack, onConfirm, isSaving, error }) {
-  const [clientName, setClientName] = useState("");
+  const [clients, setClients] = useState(null);
+  const [selection, setSelection] = useState("");
+  const [newClientName, setNewClientName] = useState("");
   const [title, setTitle] = useState("");
 
-  const canConfirm = !isSaving && clientName.trim().length > 0;
+  useEffect(() => {
+    fetch("/api/clients")
+      .then(async (res) => {
+        const data = await res.json();
+        if (res.ok) setClients(data.clients);
+      })
+      .catch(() => {});
+  }, []);
+
+  const isNewClient = selection === NEW_CLIENT;
+  const canConfirm =
+    !isSaving && (isNewClient ? newClientName.trim().length > 0 : selection.length > 0);
 
   function confirm() {
     if (!canConfirm) return;
-    onConfirm(title, clientName);
+    const existingClient = clients?.find((c) => c.id === selection);
+    onConfirm({
+      title,
+      clientId: isNewClient ? null : selection,
+      newClientName: isNewClient ? newClientName.trim() : null,
+      clientDisplayName: isNewClient ? newClientName.trim() : existingClient?.name || "",
+    });
   }
 
   return (
@@ -28,17 +49,42 @@ export default function PreviewView({ program, onBack, onConfirm, isSaving, erro
       {error && <p className="error-text">{error}</p>}
 
       <label htmlFor="program-client" className="title-label">
-        Client name (required — use your own name for your own training)
+        Client (required)
       </label>
-      <input
+      <select
         id="program-client"
-        type="text"
         className="title-input"
-        value={clientName}
-        onChange={(e) => setClientName(e.target.value)}
-        placeholder="e.g. Jack"
-        disabled={isSaving}
-      />
+        value={selection}
+        onChange={(e) => setSelection(e.target.value)}
+        disabled={isSaving || clients === null}
+      >
+        <option value="" disabled>
+          {clients === null ? "Loading clients..." : "Select a client"}
+        </option>
+        {clients?.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+        <option value={NEW_CLIENT}>+ New client...</option>
+      </select>
+
+      {isNewClient && (
+        <>
+          <label htmlFor="program-new-client" className="title-label">
+            New client's name (use your own name for your own training)
+          </label>
+          <input
+            id="program-new-client"
+            type="text"
+            className="title-input"
+            value={newClientName}
+            onChange={(e) => setNewClientName(e.target.value)}
+            placeholder="e.g. Jack"
+            disabled={isSaving}
+          />
+        </>
+      )}
 
       <label htmlFor="program-title" className="title-label">
         Name this program (optional, e.g. "Block 1")

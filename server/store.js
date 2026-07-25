@@ -1,5 +1,11 @@
 import { DatabaseSync } from "node:sqlite";
-import { randomUUID } from "crypto";
+import {
+  randomUUID,
+  randomBytes,
+  randomInt,
+  scryptSync,
+  timingSafeEqual,
+} from "crypto";
 import { existsSync, readFileSync, renameSync } from "fs";
 import { mkdirSync } from "fs";
 import path from "path";
@@ -34,7 +40,33 @@ db.exec(`
     updated_at TEXT NOT NULL,
     PRIMARY KEY (program_id, key)
   );
+
+  CREATE TABLE IF NOT EXISTS clients (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    token TEXT PRIMARY KEY,
+    role TEXT NOT NULL,
+    client_id TEXT,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+  );
 `);
+
+// Additive-only schema change on a live database: check before altering
+// rather than assuming a fresh table, since this DB already has real data.
+function ensureColumn(table, column, type) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+  }
+}
+ensureColumn("programs", "client_id", "TEXT");
 
 function describeWeeks(program) {
   const numbers = (program?.weeks || [])
@@ -81,18 +113,167 @@ function migrateLegacyJsonIfPresent() {
     `Migrated ${Object.keys(legacy).length} program(s) from programs.json into app.db (client set to "Unassigned" - edit later if needed).`
   );
 }
-
 migrateLegacyJsonIfPresent();
 
-export function saveProgram(program, title, clientName) {
+function slugifyUsername(name) {
+  const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "") || "client";
+  let candidate = base;
+  let n = 1;
+  while (db.prepare(`SELECT 1 FROM clients WHERE username = ?`).get(candidate)) {
+    n += 1;
+    candidate = `${base}${n}`;
+  }
+  return candidate;
+}
+
+// One-time backfill: every program saved before clients existed (M4's free-
+// text client_name) gets a real client record, without login credentials
+// until the coach sets one via resetClientPassword. Only touches rows that
+// don't have a client_id yet, so this is safe to run on every startup.
+function backfillClientsFromLegacyNames() {
+  const orphanNames = db
+    .prepare(`SELECT DISTINCT client_name FROM programs WHERE client_id IS NULL`)
+    .all();
+
+  for (const { client_name } of orphanNames) {
+    const clientId = randomUUID();
+    const username = slugifyUsername(client_name);
+    db.prepare(
+      `INSERT INTO clients (id, name, username, password_hash, created_at) VALUES (?, ?, ?, NULL, ?)`
+    ).run(clientId, client_name, username, new Date().toISOString());
+    db.prepare(`UPDATE programs SET client_id = ? WHERE client_name = ? AND client_id IS NULL`).run(
+      clientId,
+      client_name
+    );
+  }
+
+  if (orphanNames.length > 0) {
+    console.log(
+      `Created ${orphanNames.length} client record(s) from legacy program data (no password set yet).`
+    );
+  }
+}
+backfillClientsFromLegacyNames();
+
+/* ---------------- Password hashing ---------------- */
+
+function hashPassword(password) {
+  const salt = randomBytes(16).toString("hex");
+  const hash = scryptSync(password, salt, 64).toString("hex");
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password, stored) {
+  if (!stored) return false;
+  const [salt, hash] = stored.split(":");
+  const candidate = scryptSync(password, salt, 64);
+  const expected = Buffer.from(hash, "hex");
+  if (candidate.length !== expected.length) return false;
+  return timingSafeEqual(candidate, expected);
+}
+
+const PASSWORD_WORDS = [
+  "tiger", "comet", "maple", "river", "stone", "cedar", "amber", "coral",
+  "pearl", "ridge", "storm", "ember", "frost", "canyon", "willow", "ocean",
+  "summit", "harbor", "meadow", "falcon", "otter", "birch", "dune", "glacier",
+  "lagoon", "marsh", "orbit", "panther", "quartz", "raven", "sable", "talon",
+  "umber", "vault", "wren", "yonder", "zephyr", "brook", "clover", "delta",
+];
+
+function generatePassword() {
+  const w1 = PASSWORD_WORDS[randomInt(PASSWORD_WORDS.length)];
+  const w2 = PASSWORD_WORDS[randomInt(PASSWORD_WORDS.length)];
+  const num = randomInt(10, 100);
+  return `${w1}-${w2}-${num}`;
+}
+
+/* ---------------- Clients ---------------- */
+
+export function createClient(name) {
+  const id = randomUUID();
+  const username = slugifyUsername(name);
+  const password = generatePassword();
+  db.prepare(
+    `INSERT INTO clients (id, name, username, password_hash, created_at) VALUES (?, ?, ?, ?, ?)`
+  ).run(id, name.trim(), username, hashPassword(password), new Date().toISOString());
+  return { id, name: name.trim(), username, password };
+}
+
+export function resetClientPassword(clientId) {
+  const client = db.prepare(`SELECT * FROM clients WHERE id = ?`).get(clientId);
+  if (!client) return null;
+  const password = generatePassword();
+  db.prepare(`UPDATE clients SET password_hash = ? WHERE id = ?`).run(hashPassword(password), clientId);
+  return { id: client.id, name: client.name, username: client.username, password };
+}
+
+export function listClients() {
+  const rows = db
+    .prepare(`SELECT id, name, username, password_hash, created_at FROM clients ORDER BY name COLLATE NOCASE ASC`)
+    .all();
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    username: r.username,
+    hasPassword: !!r.password_hash,
+    createdAt: r.created_at,
+  }));
+}
+
+export function verifyClientLogin(username, password) {
+  const row = db.prepare(`SELECT * FROM clients WHERE username = ?`).get((username || "").trim().toLowerCase());
+  if (!row || !row.password_hash) return null;
+  if (!verifyPassword(password, row.password_hash)) return null;
+  return { id: row.id, name: row.name, username: row.username };
+}
+
+export function getClientById(id) {
+  return db.prepare(`SELECT id, name, username FROM clients WHERE id = ?`).get(id) || null;
+}
+
+/* ---------------- Sessions ---------------- */
+
+const SESSION_DAYS = 30;
+
+export function createSession(role, clientId = null) {
+  const token = randomBytes(32).toString("hex");
+  const now = new Date();
+  const expires = new Date(now.getTime() + SESSION_DAYS * 24 * 60 * 60 * 1000);
+  db.prepare(
+    `INSERT INTO sessions (token, role, client_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)`
+  ).run(token, role, clientId, now.toISOString(), expires.toISOString());
+  return token;
+}
+
+export function getSession(token) {
+  const row = db.prepare(`SELECT * FROM sessions WHERE token = ?`).get(token);
+  if (!row) return null;
+  if (new Date(row.expires_at) < new Date()) {
+    db.prepare(`DELETE FROM sessions WHERE token = ?`).run(token);
+    return null;
+  }
+  return { role: row.role, clientId: row.client_id };
+}
+
+export function deleteSession(token) {
+  db.prepare(`DELETE FROM sessions WHERE token = ?`).run(token);
+}
+
+/* ---------------- Programs ---------------- */
+
+export function saveProgram(program, title, clientId) {
+  const client = getClientById(clientId);
+  if (!client) throw new Error("Unknown client.");
+
   const id = randomUUID();
   const weekLabel = describeWeeks(program);
   db.prepare(
-    `INSERT INTO programs (id, client_name, title, week_label, saved_at, program_json)
-     VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO programs (id, client_id, client_name, title, week_label, saved_at, program_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
-    clientName.trim(),
+    clientId,
+    client.name,
     (title || "").trim() || weekLabel,
     weekLabel,
     new Date().toISOString(),
@@ -102,7 +283,13 @@ export function saveProgram(program, title, clientName) {
 }
 
 export function getProgram(id) {
-  const row = db.prepare(`SELECT * FROM programs WHERE id = ?`).get(id);
+  const row = db
+    .prepare(
+      `SELECT p.*, c.name AS client_display_name FROM programs p
+       LEFT JOIN clients c ON c.id = p.client_id
+       WHERE p.id = ?`
+    )
+    .get(id);
   if (!row) return null;
 
   const commentRows = db
@@ -115,7 +302,8 @@ export function getProgram(id) {
 
   return {
     id: row.id,
-    clientName: row.client_name,
+    clientId: row.client_id,
+    clientName: row.client_display_name || row.client_name,
     title: row.title,
     savedAt: row.saved_at,
     program: JSON.parse(row.program_json),
@@ -123,17 +311,30 @@ export function getProgram(id) {
   };
 }
 
-export function listPrograms() {
-  const rows = db
-    .prepare(
-      `SELECT id, client_name, title, week_label, saved_at FROM programs
-       ORDER BY client_name COLLATE NOCASE ASC, saved_at DESC`
-    )
-    .all();
+// Pass clientId to scope results to just that client's own programs
+// (what a logged-in client should see); omit it for the coach's full list.
+export function listPrograms(clientId = null) {
+  const rows = clientId
+    ? db
+        .prepare(
+          `SELECT p.id, p.client_id, COALESCE(c.name, p.client_name) AS display_name, p.title, p.week_label, p.saved_at
+           FROM programs p LEFT JOIN clients c ON c.id = p.client_id
+           WHERE p.client_id = ?
+           ORDER BY p.saved_at DESC`
+        )
+        .all(clientId)
+    : db
+        .prepare(
+          `SELECT p.id, p.client_id, COALESCE(c.name, p.client_name) AS display_name, p.title, p.week_label, p.saved_at
+           FROM programs p LEFT JOIN clients c ON c.id = p.client_id
+           ORDER BY display_name COLLATE NOCASE ASC, p.saved_at DESC`
+        )
+        .all();
 
   return rows.map((row) => ({
     id: row.id,
-    clientName: row.client_name,
+    clientId: row.client_id,
+    clientName: row.display_name,
     title: row.title,
     weekLabel: row.week_label,
     savedAt: row.saved_at,

@@ -23,9 +23,10 @@ function groupByClient(programs) {
   return groups;
 }
 
-export default function ProgramLibrary({ onSelect, onNew, isLoading, error }) {
+export default function ProgramLibrary({ role, onSelect, onNew, isLoading, error }) {
   const [programs, setPrograms] = useState(null);
   const [listError, setListError] = useState("");
+  const isCoach = role === "coach";
 
   useEffect(() => {
     fetch("/api/programs")
@@ -37,15 +38,19 @@ export default function ProgramLibrary({ onSelect, onNew, isLoading, error }) {
       .catch((err) => setListError(err.message));
   }, []);
 
-  const groups = programs ? groupByClient(programs) : [];
+  // A client only ever sees their own programs, so grouping by client name
+  // would just repeat their own name over and over - skip it for them.
+  const groups = programs ? (isCoach ? groupByClient(programs) : [{ clientName: null, programs }]) : [];
 
   return (
     <div className="card">
-      <div className="preview-actions-top">
-        <button type="button" onClick={onNew} disabled={isLoading}>
-          + New program
-        </button>
-      </div>
+      {isCoach && (
+        <div className="preview-actions-top">
+          <button type="button" onClick={onNew} disabled={isLoading}>
+            + New program
+          </button>
+        </div>
+      )}
 
       {(error || listError) && <p className="error-text">{error || listError}</p>}
 
@@ -53,13 +58,15 @@ export default function ProgramLibrary({ onSelect, onNew, isLoading, error }) {
 
       {programs && programs.length === 0 && (
         <p className="preview-hint">
-          Nothing saved yet. Parse and confirm a program to see it here.
+          {isCoach
+            ? "Nothing saved yet. Parse and confirm a program to see it here."
+            : "Nothing here yet - check back once your coach has saved you a program."}
         </p>
       )}
 
       {groups.map((group) => (
-        <div key={group.clientName} className="library-group">
-          <h2 className="library-client-name">{group.clientName}</h2>
+        <div key={group.clientName || "self"} className="library-group">
+          {group.clientName && <h2 className="library-client-name">{group.clientName}</h2>}
           <ul className="library-list">
             {group.programs.map((p) => (
               <li key={p.id}>

@@ -1,22 +1,55 @@
 import { useEffect, useState } from "react";
+import LoginView from "./components/LoginView.jsx";
 import PasteInput from "./components/PasteInput.jsx";
 import PreviewView from "./components/PreviewView.jsx";
 import ProgramView from "./components/ProgramView.jsx";
 import ProgramLibrary from "./components/ProgramLibrary.jsx";
+import ClientManagement from "./components/ClientManagement.jsx";
+import CredentialsBanner from "./components/CredentialsBanner.jsx";
 
 // The app moves through stages, one at a time:
-//   "input"   - paste raw text
-//   "preview" - check Claude's structured read of it before trusting it
-//   "view"    - the clean, client-facing rendered program
-//   "library" - browse everything you've saved
+//   "input"   - paste raw text (coach only)
+//   "preview" - check Claude's structured read of it before trusting it (coach only)
+//   "view"    - the clean, rendered program (coach or the owning client)
+//   "library" - browse saved programs (coach sees all, client sees only their own)
+//   "clients" - manage client logins (coach only)
 export default function App() {
-  const [stage, setStage] = useState("input");
+  const [role, setRole] = useState(undefined); // undefined = still checking, null = logged out
+  const [clientSelf, setClientSelf] = useState(null);
+  const [stage, setStage] = useState(null);
+
   const [program, setProgram] = useState(null);
   const [programId, setProgramId] = useState(null);
   const [programMeta, setProgramMeta] = useState({ clientName: "", title: "" });
   const [comments, setComments] = useState({});
+  const [pendingCredentials, setPendingCredentials] = useState(null);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/session")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.role) afterAuth(data);
+        else setRole(null);
+      })
+      .catch(() => setRole(null));
+  }, []);
+
+  // Runs right after we know we're logged in, whether that's from the
+  // initial session check or a fresh login just now. A saved program's link
+  // looks like ?program=<id> - if one is present, load straight into it.
+  function afterAuth(data) {
+    setRole(data.role);
+    if (data.role === "client") setClientSelf(data.client);
+
+    const pendingId = new URLSearchParams(window.location.search).get("program");
+    if (pendingId) {
+      loadProgram(pendingId);
+    } else {
+      setStage(data.role === "coach" ? "input" : "library");
+    }
+  }
 
   async function loadProgram(id) {
     setIsLoading(true);
@@ -35,17 +68,16 @@ export default function App() {
       setStage("view");
     } catch (err) {
       setError(err.message);
+      // A bad/foreign ?program= link shouldn't leave the app stuck - fall
+      // back to a sensible home screen for whoever is logged in.
+      const url = new URL(window.location.href);
+      url.searchParams.delete("program");
+      window.history.replaceState({}, "", url);
+      setStage(role === "coach" ? "input" : "library");
     } finally {
       setIsLoading(false);
     }
   }
-
-  // A saved program's link looks like ?program=<id>. Load straight into the
-  // view stage if one is present, so bookmarking/reopening that link works.
-  useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get("program");
-    if (id) loadProgram(id);
-  }, []);
 
   async function handleParse(rawText) {
     setIsLoading(true);
@@ -73,26 +105,49 @@ export default function App() {
     setStage("input");
   }
 
+  function goHome() {
+    setStage(role === "coach" ? "input" : "library");
+  }
+
   function handleShowLibrary() {
     setError("");
     setStage("library");
   }
 
-  async function handleConfirm(title, clientName) {
+  function handleShowClients() {
+    setError("");
+    setStage("clients");
+  }
+
+  async function handleConfirm({ title, clientId, newClientName, clientDisplayName }) {
     setIsLoading(true);
     setError("");
     try {
+      let finalClientId = clientId;
+
+      if (newClientName) {
+        const res = await fetch("/api/clients", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: newClientName }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not create client.");
+        finalClientId = data.id;
+        setPendingCredentials({ name: data.name, username: data.username, password: data.password });
+      }
+
       const res = await fetch("/api/programs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ program, title, clientName }),
+        body: JSON.stringify({ program, title, clientId: finalClientId }),
       });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || "Could not save the program.");
       }
       setProgramId(data.id);
-      setProgramMeta({ clientName, title: title || "" });
+      setProgramMeta({ clientName: clientDisplayName, title: title || "" });
       setComments({});
       const url = new URL(window.location.href);
       url.searchParams.set("program", data.id);
@@ -105,51 +160,98 @@ export default function App() {
     }
   }
 
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    setRole(null);
+    setClientSelf(null);
+    setProgram(null);
+    setProgramId(null);
+    setStage(null);
+    setError("");
+    setPendingCredentials(null);
+    setComments({});
+    const url = new URL(window.location.href);
+    url.searchParams.delete("program");
+    window.history.replaceState({}, "", url);
+  }
+
   return (
     <div className="app-shell">
       <header className="app-header">
         <h1>Professional Amateur</h1>
-        <p className="app-subtitle">Paste a program, check it, view it clean.</p>
+        <p className="app-subtitle">
+          {role === "client" && clientSelf
+            ? `Welcome back, ${clientSelf.name}.`
+            : "Paste a program, check it, view it clean."}
+        </p>
       </header>
 
-      {stage !== "library" && (
-        <button type="button" className="secondary library-link" onClick={handleShowLibrary}>
-          📂 My programs
-        </button>
-      )}
+      {role === undefined && <p className="preview-hint">Loading...</p>}
 
-      {stage === "input" && (
-        <PasteInput onParse={handleParse} isLoading={isLoading} error={error} />
-      )}
+      {role === null && <LoginView onLogin={afterAuth} />}
 
-      {stage === "preview" && program && (
-        <PreviewView
-          program={program}
-          onBack={handleBackToEdit}
-          onConfirm={handleConfirm}
-          isSaving={isLoading}
-          error={error}
-        />
-      )}
+      {role && (
+        <>
+          <div className="nav-row">
+            {stage !== "library" && (
+              <button type="button" className="secondary" onClick={handleShowLibrary}>
+                📂 My programs
+              </button>
+            )}
+            {role === "coach" && stage !== "clients" && (
+              <button type="button" className="secondary" onClick={handleShowClients}>
+                👥 Manage clients
+              </button>
+            )}
+            <button type="button" className="secondary" onClick={handleLogout}>
+              Log out
+            </button>
+          </div>
 
-      {stage === "view" && program && (
-        <ProgramView
-          program={program}
-          programId={programId}
-          programMeta={programMeta}
-          comments={comments}
-          onCommentsChange={setComments}
-          onBack={handleBackToEdit}
-        />
-      )}
+          {pendingCredentials && (
+            <CredentialsBanner
+              credentials={pendingCredentials}
+              onDismiss={() => setPendingCredentials(null)}
+            />
+          )}
 
-      {stage === "library" && (
-        <ProgramLibrary
-          onSelect={loadProgram}
-          onNew={handleBackToEdit}
-          isLoading={isLoading}
-          error={error}
-        />
+          {stage === "input" && role === "coach" && (
+            <PasteInput onParse={handleParse} isLoading={isLoading} error={error} />
+          )}
+
+          {stage === "preview" && role === "coach" && program && (
+            <PreviewView
+              program={program}
+              onBack={handleBackToEdit}
+              onConfirm={handleConfirm}
+              isSaving={isLoading}
+              error={error}
+            />
+          )}
+
+          {stage === "view" && program && (
+            <ProgramView
+              program={program}
+              programId={programId}
+              programMeta={programMeta}
+              comments={comments}
+              onCommentsChange={setComments}
+              onBack={goHome}
+            />
+          )}
+
+          {stage === "library" && (
+            <ProgramLibrary
+              role={role}
+              onSelect={loadProgram}
+              onNew={handleBackToEdit}
+              isLoading={isLoading}
+              error={error}
+            />
+          )}
+
+          {stage === "clients" && role === "coach" && <ClientManagement onBack={goHome} />}
+        </>
       )}
     </div>
   );
