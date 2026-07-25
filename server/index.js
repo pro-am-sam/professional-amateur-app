@@ -55,6 +55,36 @@ function normalizeProgram(input) {
   return input;
 }
 
+async function attemptParse(rawText) {
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-5",
+    max_tokens: 8000,
+    system: systemPrompt,
+    messages: [{ role: "user", content: rawText }],
+    tools: [
+      {
+        name: "record_training_program",
+        description:
+          "Records a structured training program parsed from raw coaching notes.",
+        input_schema: programSchema,
+      },
+    ],
+    tool_choice: { type: "tool", name: "record_training_program" },
+  });
+
+  const toolUse = response.content.find((block) => block.type === "tool_use");
+  if (!toolUse) {
+    return { ok: false, reason: "Claude did not return a tool_use block." };
+  }
+
+  const program = normalizeProgram(toolUse.input);
+  if (!Array.isArray(program?.weeks)) {
+    return { ok: false, reason: "weeks was not an array after normalizing.", raw: toolUse.input };
+  }
+
+  return { ok: true, program };
+}
+
 const app = express();
 app.set("trust proxy", 1);
 app.use(cors());
@@ -178,39 +208,26 @@ app.post("/api/parse", requireCoach, async (req, res) => {
   }
 
   try {
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-5",
-      max_tokens: 8000,
-      system: systemPrompt,
-      messages: [{ role: "user", content: rawText }],
-      tools: [
-        {
-          name: "record_training_program",
-          description:
-            "Records a structured training program parsed from raw coaching notes.",
-          input_schema: programSchema,
-        },
-      ],
-      tool_choice: { type: "tool", name: "record_training_program" },
-    });
-
-    const toolUse = response.content.find((block) => block.type === "tool_use");
-
-    if (!toolUse) {
+    let result = await attemptParse(rawText);
+    if (!result.ok) {
+      console.error(
+        "Parse attempt 1 failed:",
+        result.reason,
+        JSON.stringify(result.raw)?.slice(0, 1000)
+      );
+      result = await attemptParse(rawText); // LLM output can be flaky - one retry usually succeeds
+    }
+    if (!result.ok) {
+      console.error(
+        "Parse attempt 2 failed:",
+        result.reason,
+        JSON.stringify(result.raw)?.slice(0, 1000)
+      );
       return res
         .status(502)
-        .json({ error: "Claude did not return structured data. Please try again." });
+        .json({ error: "Claude had trouble parsing that. Please try again." });
     }
-
-    const program = normalizeProgram(toolUse.input);
-
-    if (!Array.isArray(program?.weeks)) {
-      return res
-        .status(502)
-        .json({ error: "Claude returned malformed data. Please try again." });
-    }
-
-    res.json(program);
+    res.json(result.program);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to parse program: " + err.message });
