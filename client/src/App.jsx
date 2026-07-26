@@ -5,6 +5,7 @@ import PreviewView from "./components/PreviewView.jsx";
 import ProgramView from "./components/ProgramView.jsx";
 import ProgramLibrary from "./components/ProgramLibrary.jsx";
 import ClientManagement from "./components/ClientManagement.jsx";
+import ChangePassword from "./components/ChangePassword.jsx";
 import CredentialsBanner from "./components/CredentialsBanner.jsx";
 
 // The app moves through stages, one at a time:
@@ -119,6 +120,11 @@ export default function App() {
     setStage("clients");
   }
 
+  function handleShowPassword() {
+    setError("");
+    setStage("password");
+  }
+
   async function handleConfirm({ title, clientId, newClientName, clientDisplayName }) {
     setIsLoading(true);
     setError("");
@@ -203,6 +209,11 @@ export default function App() {
                 👥 Manage clients
               </button>
             )}
+            {role === "client" && stage !== "password" && (
+              <button type="button" className="secondary" onClick={handleShowPassword}>
+                🔑 Change password
+              </button>
+            )}
             <button type="button" className="secondary" onClick={handleLogout}>
               Log out
             </button>
@@ -251,6 +262,8 @@ export default function App() {
           )}
 
           {stage === "clients" && role === "coach" && <ClientManagement onBack={goHome} />}
+
+          {stage === "password" && role === "client" && <ChangePassword onBack={goHome} />}
         </>
       )}
     </div>

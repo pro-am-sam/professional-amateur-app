@@ -231,6 +231,22 @@ export function getClientById(id) {
   return db.prepare(`SELECT id, name, username FROM clients WHERE id = ?`).get(id) || null;
 }
 
+export function changeClientPassword(clientId, currentPassword, newPassword) {
+  const client = db.prepare(`SELECT * FROM clients WHERE id = ?`).get(clientId);
+  if (!client) return { ok: false, error: "Client not found." };
+  if (!verifyPassword(currentPassword, client.password_hash)) {
+    return { ok: false, error: "Current password is incorrect." };
+  }
+  if (!newPassword || newPassword.length < 8) {
+    return { ok: false, error: "New password must be at least 8 characters." };
+  }
+  db.prepare(`UPDATE clients SET password_hash = ? WHERE id = ?`).run(
+    hashPassword(newPassword),
+    clientId
+  );
+  return { ok: true };
+}
+
 /* ---------------- Sessions ---------------- */
 
 const SESSION_DAYS = 30;

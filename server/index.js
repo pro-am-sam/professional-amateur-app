@@ -17,6 +17,7 @@ import {
   listClients,
   getClientById,
   verifyClientLogin,
+  changeClientPassword,
   createSession,
   getSession,
   deleteSession,
@@ -174,6 +175,20 @@ app.get("/api/auth/session", (req, res) => {
   if (!session) return res.json({ role: null });
   if (session.role === "coach") return res.json({ role: "coach" });
   res.json({ role: "client", client: getClientById(session.clientId) });
+});
+
+app.post("/api/auth/change-password", requireAuth, (req, res) => {
+  if (req.session.role !== "client") {
+    return res
+      .status(400)
+      .json({ error: "The coach password is set via server configuration, not changeable here." });
+  }
+  const { currentPassword, newPassword } = req.body || {};
+  const result = changeClientPassword(req.session.clientId, currentPassword || "", newPassword || "");
+  if (!result.ok) {
+    return res.status(400).json({ error: result.error });
+  }
+  res.json({ ok: true });
 });
 
 /* ---------------- Client management (coach-only) ---------------- */

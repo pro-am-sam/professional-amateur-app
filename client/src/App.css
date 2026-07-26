@@ -129,6 +129,12 @@ form.card button[type="submit"] {
   margin: 10px 0 0;
 }
 
+.success-text {
+  color: var(--steel);
+  font-weight: 600;
+  margin: 10px 0 0;
+}
+
 /* Preview */
 .preview-actions-top,
 .preview-actions-bottom {
