@@ -13,6 +13,20 @@ export default function ProgramView({
   const weeks = program.weeks;
   const [weekIndex, setWeekIndex] = useState(0);
   const [dayIndex, setDayIndex] = useState(0);
+  const [oneRMs, setOneRMs] = useState([]);
+
+  // Fetched once so any "% of 1RM" exercise can compute a real weight
+  // without a network round-trip per click. Coach needs to say which
+  // client; a client session is auto-scoped to their own on the backend.
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (role === "coach" && programMeta?.clientId) params.set("clientId", programMeta.clientId);
+    params.set("category", "1rm");
+    fetch(`/api/benchmarks?${params.toString()}`)
+      .then((res) => (res.ok ? res.json() : { benchmarks: [] }))
+      .then((data) => setOneRMs((data.benchmarks || []).filter((b) => b.latestValue)))
+      .catch(() => setOneRMs([]));
+  }, [role, programMeta?.clientId]);
 
   const activeWeek = weeks[weekIndex];
   const days = activeWeek?.days || [];
@@ -82,6 +96,7 @@ export default function ProgramView({
                 programId={programId}
                 comments={comments}
                 onCommentsChange={onCommentsChange}
+                oneRMs={oneRMs}
               />
             );
           })}
@@ -91,7 +106,7 @@ export default function ProgramView({
   );
 }
 
-function BlockCard({ block, blockKey, programId, comments, onCommentsChange }) {
+function BlockCard({ block, blockKey, programId, comments, onCommentsChange, oneRMs }) {
   return (
     <div className="block-card">
       <div className="block-title">
@@ -105,7 +120,7 @@ function BlockCard({ block, blockKey, programId, comments, onCommentsChange }) {
 
       <ul className="exercise-list">
         {block.exercises.map((ex, ei) => (
-          <ExerciseRow key={ei} exercise={ex} />
+          <ExerciseRow key={ei} exercise={ex} oneRMs={oneRMs} />
         ))}
       </ul>
 
@@ -123,7 +138,7 @@ function BlockCard({ block, blockKey, programId, comments, onCommentsChange }) {
 
 const EMOM_SCHEME = /^minute\s*\d+/i;
 
-function ExerciseRow({ exercise }) {
+function ExerciseRow({ exercise, oneRMs }) {
   const isEmomMinute = exercise.scheme && EMOM_SCHEME.test(exercise.scheme);
 
   if (isEmomMinute) {
@@ -137,6 +152,7 @@ function ExerciseRow({ exercise }) {
           {exercise.load && <span className="exercise-details">{exercise.load}</span>}
           {exercise.rest && <span className="exercise-rest">Rest {exercise.rest}</span>}
         </div>
+        <WeightReveal exercise={exercise} oneRMs={oneRMs} />
         {exercise.notes && <NoteToggle notes={exercise.notes} />}
       </li>
     );
@@ -153,8 +169,78 @@ function ExerciseRow({ exercise }) {
         {details && <span className="exercise-details">{details}</span>}
         {exercise.rest && <span className="exercise-rest">Rest {exercise.rest}</span>}
       </div>
+      <WeightReveal exercise={exercise} oneRMs={oneRMs} />
       {exercise.notes && <NoteToggle notes={exercise.notes} />}
     </li>
+  );
+}
+
+// Matches a load like "90%" or a range like "75-77.5%". Anything else
+// (weights, RPE, "70%+", etc.) intentionally doesn't match - better to show
+// nothing than compute a wrong number from a pattern we're not sure about.
+function parsePercentageLoad(load) {
+  if (!load) return null;
+  const match = load.trim().match(/^(\d+(?:\.\d+)?)\s*(?:-\s*(\d+(?:\.\d+)?)\s*)?%$/);
+  if (!match) return null;
+  return { min: parseFloat(match[1]), max: match[2] ? parseFloat(match[2]) : null };
+}
+
+function parseOneRMValue(value) {
+  if (!value) return null;
+  const match = value.trim().match(/^(\d+(?:\.\d+)?)\s*(kg|lbs?|lb)?/i);
+  if (!match) return null;
+  return { amount: parseFloat(match[1]), unit: match[2] ? match[2].toLowerCase().replace(/s$/, "") : "" };
+}
+
+// Exact name match first ("Deadlift" -> "Deadlift"); otherwise the longest
+// logged 1RM name that appears inside the exercise name, so a complex like
+// "Snatch pull + Hang muscle snatch" still finds the "Snatch" 1RM.
+function matchOneRM(oneRMs, exerciseName) {
+  if (!exerciseName || !oneRMs?.length) return null;
+  const name = exerciseName.toLowerCase();
+  const exact = oneRMs.find((b) => b.name.toLowerCase() === name);
+  if (exact) return exact;
+  const candidates = oneRMs
+    .filter((b) => name.includes(b.name.toLowerCase()))
+    .sort((a, b) => b.name.length - a.name.length);
+  return candidates[0] || null;
+}
+
+function computeWeight(percent, oneRM) {
+  const parsed = parseOneRMValue(oneRM.latestValue);
+  if (!parsed) return null;
+  const rounded = Math.round(((percent / 100) * parsed.amount) * 10) / 10;
+  return `${rounded}${parsed.unit}`;
+}
+
+function WeightReveal({ exercise, oneRMs }) {
+  const [open, setOpen] = useState(false);
+  const pct = parsePercentageLoad(exercise.load);
+  if (!pct) return null;
+
+  const match = matchOneRM(oneRMs, exercise.name);
+  let message;
+  if (!match) {
+    message = `No 1RM logged for "${exercise.name}" yet — log one under 1RMs and Benchmarks.`;
+  } else {
+    const minWeight = computeWeight(pct.min, match);
+    const maxWeight = pct.max ? computeWeight(pct.max, match) : null;
+    if (!minWeight) {
+      message = `Couldn't read a number from the logged ${match.name} (${match.latestValue}).`;
+    } else if (maxWeight) {
+      message = `${pct.min}-${pct.max}% of ${match.name} (${match.latestValue}) = ${minWeight} - ${maxWeight}`;
+    } else {
+      message = `${pct.min}% of ${match.name} (${match.latestValue}) = ${minWeight}`;
+    }
+  }
+
+  return (
+    <div className="note-toggle">
+      <button type="button" className="note-button" onClick={() => setOpen(!open)}>
+        {open ? "Hide weight ▲" : "🧮 Show weight ▼"}
+      </button>
+      {open && <p className="note-text">{message}</p>}
+    </div>
   );
 }
 

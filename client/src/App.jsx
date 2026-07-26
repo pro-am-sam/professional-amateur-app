@@ -24,7 +24,7 @@ export default function App() {
 
   const [program, setProgram] = useState(null);
   const [programId, setProgramId] = useState(null);
-  const [programMeta, setProgramMeta] = useState({ clientName: "", title: "" });
+  const [programMeta, setProgramMeta] = useState({ clientId: null, clientName: "", title: "" });
   const [comments, setComments] = useState({});
   const [pendingCredentials, setPendingCredentials] = useState(null);
   const [error, setError] = useState("");
@@ -64,7 +64,7 @@ export default function App() {
       if (!res.ok) throw new Error(data.error || "Could not load that program.");
       setProgram(data.program);
       setProgramId(data.id);
-      setProgramMeta({ clientName: data.clientName, title: data.title });
+      setProgramMeta({ clientId: data.clientId, clientName: data.clientName, title: data.title });
       setComments(data.comments || {});
       const url = new URL(window.location.href);
       url.searchParams.set("program", data.id);
@@ -176,7 +176,7 @@ export default function App() {
         throw new Error(data.error || "Could not save the program.");
       }
       setProgramId(data.id);
-      setProgramMeta({ clientName: clientDisplayName, title: title || "" });
+      setProgramMeta({ clientId: finalClientId, clientName: clientDisplayName, title: title || "" });
       setComments({});
       const url = new URL(window.location.href);
       url.searchParams.set("program", data.id);
