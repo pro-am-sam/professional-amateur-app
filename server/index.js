@@ -11,6 +11,7 @@ import {
   saveProgram,
   getProgram,
   updateProgram,
+  appendWeeks,
   listPrograms,
   listExerciseNames,
   findExerciseHistory,
@@ -443,6 +444,25 @@ app.patch("/api/programs/:id", requireCoach, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update program: " + err.message });
+  }
+});
+
+app.post("/api/programs/:id/weeks", requireCoach, async (req, res) => {
+  const fragment = req.body?.program;
+
+  if (!fragment || !Array.isArray(fragment.weeks) || fragment.weeks.length === 0) {
+    return res.status(400).json({ error: "No valid weeks were provided." });
+  }
+
+  try {
+    const merged = await appendWeeks(req.params.id, fragment);
+    if (!merged) {
+      return res.status(404).json({ error: "Program not found." });
+    }
+    res.json({ program: merged });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to add weeks: " + err.message });
   }
 });
 

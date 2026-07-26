@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-export default function PasteInput({ onParse, isLoading, error }) {
+export default function PasteInput({ onParse, isLoading, error, appendTarget, onCancelAppend }) {
   const [text, setText] = useState("");
 
   function handleSubmit(e) {
@@ -11,6 +11,18 @@ export default function PasteInput({ onParse, isLoading, error }) {
 
   return (
     <form className="card" onSubmit={handleSubmit}>
+      {appendTarget && (
+        <div className="append-banner">
+          <span>
+            Adding a new week to <strong>{appendTarget.clientName}</strong>
+            {appendTarget.title ? ` — ${appendTarget.title}` : ""}
+          </span>
+          <button type="button" className="secondary" onClick={onCancelAppend}>
+            ← Cancel, back to program
+          </button>
+        </div>
+      )}
+
       <label htmlFor="program-text">
         Paste your training program (copied from Word or Excel)
       </label>

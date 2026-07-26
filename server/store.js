@@ -453,6 +453,37 @@ export function updateProgram(id, program) {
   return true;
 }
 
+// Coaches typically write a new block of programming starting from "Week 1"
+// again in their own document, even when adding onto an existing saved
+// program. Shift the incoming weeks so they always continue right after the
+// program's current highest week number - this keeps every week number
+// unique within the program, which matters because comment keys are built
+// from week number + day order + block letter. Relative gaps in the
+// incoming weeks (e.g. "Week 1" and "Week 3" only) are preserved.
+export function appendWeeks(id, newFragment) {
+  const row = db.prepare(`SELECT program_json FROM programs WHERE id = ?`).get(id);
+  if (!row) return null;
+
+  const existing = JSON.parse(row.program_json);
+  const existingMax = existing.weeks.reduce((max, w) => Math.max(max, w.weekNumber || 0), 0);
+
+  const newWeeksSorted = [...(newFragment.weeks || [])].sort(
+    (a, b) => (a.weekNumber || 0) - (b.weekNumber || 0)
+  );
+  const newMin = newWeeksSorted[0]?.weekNumber ?? 1;
+  const offset = existingMax + 1 - newMin;
+  const renumbered = newWeeksSorted.map((w) => ({ ...w, weekNumber: (w.weekNumber || 0) + offset }));
+
+  const merged = { ...existing, weeks: [...existing.weeks, ...renumbered] };
+  const weekLabel = describeWeeks(merged);
+  db.prepare(`UPDATE programs SET program_json = ?, week_label = ? WHERE id = ?`).run(
+    JSON.stringify(merged),
+    weekLabel,
+    id
+  );
+  return merged;
+}
+
 export function upsertComment(id, key, text) {
   const exists = db.prepare(`SELECT 1 FROM programs WHERE id = ?`).get(id);
   if (!exists) return null;

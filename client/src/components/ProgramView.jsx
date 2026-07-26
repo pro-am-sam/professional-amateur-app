@@ -9,6 +9,7 @@ export default function ProgramView({
   onBack,
   role,
   onEdit,
+  onAddWeek,
 }) {
   const weeks = program.weeks;
   const [weekIndex, setWeekIndex] = useState(0);
@@ -46,6 +47,11 @@ export default function ProgramView({
         {role === "coach" && (
           <button type="button" className="secondary" onClick={onEdit}>
             ✏️ Edit program
+          </button>
+        )}
+        {role === "coach" && (
+          <button type="button" className="secondary" onClick={onAddWeek}>
+            ➕ Add week
           </button>
         )}
       </div>

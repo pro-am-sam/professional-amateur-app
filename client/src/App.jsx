@@ -26,6 +26,7 @@ export default function App() {
   const [programId, setProgramId] = useState(null);
   const [programMeta, setProgramMeta] = useState({ clientId: null, clientName: "", title: "" });
   const [comments, setComments] = useState({});
+  const [appendTarget, setAppendTarget] = useState(null); // set while adding weeks to an existing program
   const [pendingCredentials, setPendingCredentials] = useState(null);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -115,16 +116,19 @@ export default function App() {
 
   function handleShowLibrary() {
     setError("");
+    setAppendTarget(null);
     setStage("library");
   }
 
   function handleShowClients() {
     setError("");
+    setAppendTarget(null);
     setStage("clients");
   }
 
   function handleShowPassword() {
     setError("");
+    setAppendTarget(null);
     setStage("password");
   }
 
@@ -135,17 +139,57 @@ export default function App() {
 
   function handleShowHistory() {
     setError("");
+    setAppendTarget(null);
     setStage("history");
   }
 
   function handleShowBenchmarks() {
     setError("");
+    setAppendTarget(null);
     setStage("benchmarks");
   }
 
   function handleProgramSaved(updatedProgram) {
     setProgram(updatedProgram);
     setStage("view");
+  }
+
+  function handleShowAddWeek() {
+    setError("");
+    setAppendTarget({
+      id: programId,
+      title: programMeta.title,
+      clientName: programMeta.clientName,
+      existingMaxWeek: program.weeks.reduce((max, w) => Math.max(max, w.weekNumber || 0), 0),
+    });
+    setStage("input");
+  }
+
+  function handleCancelAppend() {
+    setError("");
+    setAppendTarget(null);
+    setStage("view");
+  }
+
+  async function handleAppendWeeks() {
+    setIsLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/programs/${appendTarget.id}/weeks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ program }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not add those weeks.");
+      setProgram(data.program);
+      setAppendTarget(null);
+      setStage("view");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   async function handleConfirm({ title, clientId, newClientName, clientDisplayName }) {
@@ -199,6 +243,7 @@ export default function App() {
     setError("");
     setPendingCredentials(null);
     setComments({});
+    setAppendTarget(null);
     const url = new URL(window.location.href);
     url.searchParams.delete("program");
     window.history.replaceState({}, "", url);
@@ -260,7 +305,13 @@ export default function App() {
           )}
 
           {stage === "input" && role === "coach" && (
-            <PasteInput onParse={handleParse} isLoading={isLoading} error={error} />
+            <PasteInput
+              onParse={handleParse}
+              isLoading={isLoading}
+              error={error}
+              appendTarget={appendTarget}
+              onCancelAppend={handleCancelAppend}
+            />
           )}
 
           {stage === "preview" && role === "coach" && program && (
@@ -268,6 +319,8 @@ export default function App() {
               program={program}
               onBack={handleBackToEdit}
               onConfirm={handleConfirm}
+              onAppend={handleAppendWeeks}
+              appendTarget={appendTarget}
               isSaving={isLoading}
               error={error}
             />
@@ -283,6 +336,7 @@ export default function App() {
               onBack={goHome}
               role={role}
               onEdit={handleShowEdit}
+              onAddWeek={handleShowAddWeek}
             />
           )}
 
