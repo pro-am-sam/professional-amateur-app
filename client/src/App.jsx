@@ -7,6 +7,7 @@ import ProgramLibrary from "./components/ProgramLibrary.jsx";
 import ClientManagement from "./components/ClientManagement.jsx";
 import ChangePassword from "./components/ChangePassword.jsx";
 import EditProgram from "./components/EditProgram.jsx";
+import ExerciseHistory from "./components/ExerciseHistory.jsx";
 import CredentialsBanner from "./components/CredentialsBanner.jsx";
 
 // The app moves through stages, one at a time:
@@ -131,6 +132,11 @@ export default function App() {
     setStage("edit");
   }
 
+  function handleShowHistory() {
+    setError("");
+    setStage("history");
+  }
+
   function handleProgramSaved(updatedProgram) {
     setProgram(updatedProgram);
     setStage("view");
@@ -220,6 +226,11 @@ export default function App() {
                 👥 Manage clients
               </button>
             )}
+            {stage !== "history" && (
+              <button type="button" className="secondary" onClick={handleShowHistory}>
+                📊 Exercise history
+              </button>
+            )}
             {role === "client" && stage !== "password" && (
               <button type="button" className="secondary" onClick={handleShowPassword}>
                 🔑 Change password
@@ -272,6 +283,8 @@ export default function App() {
               onCancel={() => setStage("view")}
             />
           )}
+
+          {stage === "history" && <ExerciseHistory role={role} onBack={goHome} />}
 
           {stage === "library" && (
             <ProgramLibrary

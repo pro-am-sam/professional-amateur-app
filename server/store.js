@@ -357,6 +357,74 @@ export function listPrograms(clientId = null) {
   }));
 }
 
+function* iterateExercises(program) {
+  for (const week of program?.weeks || []) {
+    for (const day of week.days || []) {
+      for (const block of day.blocks || []) {
+        for (const exercise of block.exercises || []) {
+          yield { week, day, block, exercise };
+        }
+      }
+    }
+  }
+}
+
+// Every distinct movement name a client has ever had programmed, for an
+// autocomplete list rather than requiring an exact free-text match.
+export function listExerciseNames(clientId) {
+  const rows = db.prepare(`SELECT program_json FROM programs WHERE client_id = ?`).all(clientId);
+  const names = new Set();
+  for (const row of rows) {
+    const program = JSON.parse(row.program_json);
+    for (const { exercise } of iterateExercises(program)) {
+      if (exercise.name) names.add(exercise.name);
+    }
+  }
+  return [...names].sort((a, b) => a.localeCompare(b));
+}
+
+// Every occurrence of a movement (case-insensitive substring match, so it
+// also picks up complexes like "Snatch pull + Hang muscle snatch") across
+// every program ever saved for this client, oldest first, with whatever
+// comment was left on that block.
+export function findExerciseHistory(clientId, query) {
+  const q = (query || "").trim().toLowerCase();
+  if (!q) return [];
+
+  const rows = db
+    .prepare(
+      `SELECT id, title, saved_at, program_json FROM programs WHERE client_id = ? ORDER BY saved_at ASC`
+    )
+    .all(clientId);
+
+  const results = [];
+  for (const row of rows) {
+    const program = JSON.parse(row.program_json);
+    for (const { week, day, block, exercise } of iterateExercises(program)) {
+      if (!exercise.name || !exercise.name.toLowerCase().includes(q)) continue;
+      const key = `w${week.weekNumber}-d${day.dayOrder}-b${block.letter}`;
+      const commentRow = db
+        .prepare(`SELECT text FROM comments WHERE program_id = ? AND key = ?`)
+        .get(row.id, key);
+      results.push({
+        programId: row.id,
+        programTitle: row.title,
+        programSavedAt: row.saved_at,
+        weekNumber: week.weekNumber,
+        dayLabel: day.dayLabel,
+        exerciseName: exercise.name,
+        scheme: exercise.scheme || null,
+        reps: exercise.reps || null,
+        load: exercise.load || null,
+        rest: exercise.rest || null,
+        notes: exercise.notes || null,
+        comment: commentRow ? commentRow.text : null,
+      });
+    }
+  }
+  return results;
+}
+
 // Content-only update (exercise/block fields). weekNumber, dayOrder, and
 // block letter are the pieces comment keys are built from - the frontend is
 // expected to leave those untouched, so existing comments stay attached to

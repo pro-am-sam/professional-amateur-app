@@ -12,6 +12,8 @@ import {
   getProgram,
   updateProgram,
   listPrograms,
+  listExerciseNames,
+  findExerciseHistory,
   upsertComment,
   createClient,
   resetClientPassword,
@@ -281,6 +283,41 @@ app.get("/api/programs", requireAuth, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to list programs: " + err.message });
+  }
+});
+
+// A client can only ever look up their own history; a coach must say which
+// client. Never trust a client-supplied clientId query param for a client
+// session - that would let one client browse another's history.
+function resolveHistoryClientId(req) {
+  if (req.session.role === "client") return req.session.clientId;
+  const clientId = req.query.clientId;
+  return clientId && getClientById(clientId) ? clientId : null;
+}
+
+app.get("/api/exercise-history/names", requireAuth, (req, res) => {
+  const clientId = resolveHistoryClientId(req);
+  if (!clientId) {
+    return res.status(400).json({ error: "A valid client is required." });
+  }
+  try {
+    res.json({ names: listExerciseNames(clientId) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load exercise names: " + err.message });
+  }
+});
+
+app.get("/api/exercise-history", requireAuth, (req, res) => {
+  const clientId = resolveHistoryClientId(req);
+  if (!clientId) {
+    return res.status(400).json({ error: "A valid client is required." });
+  }
+  try {
+    res.json({ results: findExerciseHistory(clientId, req.query.exercise) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to search exercise history: " + err.message });
   }
 });
 
