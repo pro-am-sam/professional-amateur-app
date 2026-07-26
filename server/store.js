@@ -581,3 +581,75 @@ export function deleteBenchmarkEntry(id, clientId) {
     .run(id, clientId);
   return result.changes > 0;
 }
+
+/* ---------------- Client detail (coach's "click into a client" view) ---------------- */
+
+// A comment's key is "w{weekNumber}-d{dayOrder}-b{letter}" - not human
+// readable on its own, so resolve it against the actual program content to
+// show what the comment is actually about.
+function resolveCommentLabel(program, key) {
+  const match = key.match(/^w(\d+)-d(\d+)-b(.+)$/);
+  if (!match) return null;
+  const [, weekNum, dayNum, letter] = match;
+  const week = (program.weeks || []).find((w) => String(w.weekNumber) === weekNum);
+  const day = week?.days?.find((d) => String(d.dayOrder) === dayNum);
+  const block = day?.blocks?.find((b) => b.letter === letter);
+  if (!block) return null;
+  return block.blockName || block.exercises?.[0]?.name || `Block ${letter}`;
+}
+
+export function getClientDetail(clientId) {
+  const client = db
+    .prepare(`SELECT id, name, username, password_hash, created_at FROM clients WHERE id = ?`)
+    .get(clientId);
+  if (!client) return null;
+
+  const programs = listPrograms(clientId);
+
+  const commentRows = db
+    .prepare(
+      `SELECT c.program_id, c.key, c.text, c.updated_at, p.title, p.program_json
+       FROM comments c JOIN programs p ON p.id = c.program_id
+       WHERE p.client_id = ?
+       ORDER BY c.updated_at DESC LIMIT 15`
+    )
+    .all(clientId);
+
+  const recentComments = commentRows.map((row) => {
+    const program = JSON.parse(row.program_json);
+    return {
+      programId: row.program_id,
+      programTitle: row.title,
+      label: resolveCommentLabel(program, row.key) || row.key,
+      text: row.text,
+      updatedAt: row.updated_at,
+    };
+  });
+
+  const recentBenchmarks = db
+    .prepare(
+      `SELECT category, name, value, recorded_at, created_at FROM benchmarks
+       WHERE client_id = ? ORDER BY created_at DESC LIMIT 15`
+    )
+    .all(clientId)
+    .map((row) => ({
+      category: row.category,
+      name: row.name,
+      value: row.value,
+      recordedAt: row.recorded_at,
+      createdAt: row.created_at,
+    }));
+
+  return {
+    client: {
+      id: client.id,
+      name: client.name,
+      username: client.username,
+      hasPassword: !!client.password_hash,
+      createdAt: client.created_at,
+    },
+    programs,
+    recentComments,
+    recentBenchmarks,
+  };
+}

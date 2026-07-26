@@ -23,6 +23,7 @@ import {
   resetClientPassword,
   listClients,
   getClientById,
+  getClientDetail,
   verifyClientLogin,
   changeClientPassword,
   createSession,
@@ -218,6 +219,19 @@ app.post("/api/clients/:id/reset-password", requireCoach, (req, res) => {
     return res.status(404).json({ error: "Client not found." });
   }
   res.json(result);
+});
+
+app.get("/api/clients/:id", requireCoach, (req, res) => {
+  try {
+    const detail = getClientDetail(req.params.id);
+    if (!detail) {
+      return res.status(404).json({ error: "Client not found." });
+    }
+    res.json(detail);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load client: " + err.message });
+  }
 });
 
 /* ---------------- Parsing ---------------- */

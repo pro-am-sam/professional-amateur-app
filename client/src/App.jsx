@@ -309,7 +309,9 @@ export default function App() {
             />
           )}
 
-          {stage === "clients" && role === "coach" && <ClientManagement onBack={goHome} />}
+          {stage === "clients" && role === "coach" && (
+            <ClientManagement onBack={goHome} onSelectProgram={loadProgram} />
+          )}
 
           {stage === "password" && role === "client" && <ChangePassword onBack={goHome} />}
         </>
