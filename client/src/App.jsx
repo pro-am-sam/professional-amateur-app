@@ -6,6 +6,7 @@ import ProgramView from "./components/ProgramView.jsx";
 import ProgramLibrary from "./components/ProgramLibrary.jsx";
 import ClientManagement from "./components/ClientManagement.jsx";
 import ChangePassword from "./components/ChangePassword.jsx";
+import EditProgram from "./components/EditProgram.jsx";
 import CredentialsBanner from "./components/CredentialsBanner.jsx";
 
 // The app moves through stages, one at a time:
@@ -123,6 +124,16 @@ export default function App() {
   function handleShowPassword() {
     setError("");
     setStage("password");
+  }
+
+  function handleShowEdit() {
+    setError("");
+    setStage("edit");
+  }
+
+  function handleProgramSaved(updatedProgram) {
+    setProgram(updatedProgram);
+    setStage("view");
   }
 
   async function handleConfirm({ title, clientId, newClientName, clientDisplayName }) {
@@ -248,6 +259,17 @@ export default function App() {
               comments={comments}
               onCommentsChange={setComments}
               onBack={goHome}
+              role={role}
+              onEdit={handleShowEdit}
+            />
+          )}
+
+          {stage === "edit" && role === "coach" && program && (
+            <EditProgram
+              program={program}
+              programId={programId}
+              onSaved={handleProgramSaved}
+              onCancel={() => setStage("view")}
             />
           )}
 

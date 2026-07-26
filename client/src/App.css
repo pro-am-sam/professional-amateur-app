@@ -528,6 +528,50 @@ button.library-item:hover:not(:disabled) {
   margin-bottom: 10px;
 }
 
+.edit-input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font-family: "Inter", sans-serif;
+  font-size: 0.85rem;
+  color: var(--ink);
+  background: var(--ground);
+}
+
+.edit-input:focus {
+  outline: none;
+  border-color: var(--steel);
+  background: #fff;
+}
+
+.edit-block-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.edit-exercise-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.edit-exercise-name {
+  font-weight: 600;
+}
+
+.edit-exercise-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.edit-exercise-notes {
+  min-height: 44px;
+}
+
 .block-letter {
   flex: 0 0 auto;
   width: 30px;

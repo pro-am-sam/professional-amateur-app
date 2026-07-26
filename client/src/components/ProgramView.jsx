@@ -7,6 +7,8 @@ export default function ProgramView({
   comments,
   onCommentsChange,
   onBack,
+  role,
+  onEdit,
 }) {
   const weeks = program.weeks;
   const [weekIndex, setWeekIndex] = useState(0);
@@ -23,9 +25,16 @@ export default function ProgramView({
 
   return (
     <div>
-      <button type="button" className="secondary back-link" onClick={onBack}>
-        ← Back
-      </button>
+      <div className="preview-actions-top">
+        <button type="button" className="secondary" onClick={onBack}>
+          ← Back
+        </button>
+        {role === "coach" && (
+          <button type="button" className="secondary" onClick={onEdit}>
+            ✏️ Edit program
+          </button>
+        )}
+      </div>
 
       {programMeta?.clientName && (
         <div className="program-meta">

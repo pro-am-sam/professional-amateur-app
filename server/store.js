@@ -357,6 +357,23 @@ export function listPrograms(clientId = null) {
   }));
 }
 
+// Content-only update (exercise/block fields). weekNumber, dayOrder, and
+// block letter are the pieces comment keys are built from - the frontend is
+// expected to leave those untouched, so existing comments stay attached to
+// the right block.
+export function updateProgram(id, program) {
+  const exists = db.prepare(`SELECT 1 FROM programs WHERE id = ?`).get(id);
+  if (!exists) return false;
+
+  const weekLabel = describeWeeks(program);
+  db.prepare(`UPDATE programs SET program_json = ?, week_label = ? WHERE id = ?`).run(
+    JSON.stringify(program),
+    weekLabel,
+    id
+  );
+  return true;
+}
+
 export function upsertComment(id, key, text) {
   const exists = db.prepare(`SELECT 1 FROM programs WHERE id = ?`).get(id);
   if (!exists) return null;

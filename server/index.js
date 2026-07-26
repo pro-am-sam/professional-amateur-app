@@ -10,6 +10,7 @@ import { programSchema, systemPrompt } from "./parseProgram.js";
 import {
   saveProgram,
   getProgram,
+  updateProgram,
   listPrograms,
   upsertComment,
   createClient,
@@ -296,6 +297,25 @@ app.get("/api/programs/:id", requireAuth, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to load program: " + err.message });
+  }
+});
+
+app.patch("/api/programs/:id", requireCoach, async (req, res) => {
+  const program = req.body?.program;
+
+  if (!program || !Array.isArray(program.weeks)) {
+    return res.status(400).json({ error: "No valid program was provided." });
+  }
+
+  try {
+    const ok = await updateProgram(req.params.id, program);
+    if (!ok) {
+      return res.status(404).json({ error: "Program not found." });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update program: " + err.message });
   }
 });
 
