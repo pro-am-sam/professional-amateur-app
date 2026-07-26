@@ -14,6 +14,10 @@ import {
   listPrograms,
   listExerciseNames,
   findExerciseHistory,
+  listBenchmarks,
+  getBenchmarkHistory,
+  addBenchmarkEntry,
+  deleteBenchmarkEntry,
   upsertComment,
   createClient,
   resetClientPassword,
@@ -318,6 +322,78 @@ app.get("/api/exercise-history", requireAuth, (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to search exercise history: " + err.message });
+  }
+});
+
+function validCategory(category) {
+  return category === "1rm" || category === "wod" || category === "mono";
+}
+
+app.get("/api/benchmarks", requireAuth, (req, res) => {
+  const clientId = resolveHistoryClientId(req);
+  if (!clientId) {
+    return res.status(400).json({ error: "A valid client is required." });
+  }
+  if (!validCategory(req.query.category)) {
+    return res.status(400).json({ error: "category must be '1rm', 'wod', or 'mono'." });
+  }
+  try {
+    res.json({ benchmarks: listBenchmarks(clientId, req.query.category) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load benchmarks: " + err.message });
+  }
+});
+
+app.get("/api/benchmarks/history", requireAuth, (req, res) => {
+  const clientId = resolveHistoryClientId(req);
+  if (!clientId) {
+    return res.status(400).json({ error: "A valid client is required." });
+  }
+  if (!validCategory(req.query.category) || !req.query.name) {
+    return res.status(400).json({ error: "category and name are required." });
+  }
+  try {
+    res.json({ entries: getBenchmarkHistory(clientId, req.query.category, req.query.name) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load benchmark history: " + err.message });
+  }
+});
+
+app.post("/api/benchmarks", requireAuth, (req, res) => {
+  const clientId = req.session.role === "client" ? req.session.clientId : req.body?.clientId;
+  if (!clientId || (req.session.role === "coach" && !getClientById(clientId))) {
+    return res.status(400).json({ error: "A valid client is required." });
+  }
+  const { category, name, value, recordedAt, notes } = req.body || {};
+  if (!validCategory(category)) {
+    return res.status(400).json({ error: "category must be '1rm', 'wod', or 'mono'." });
+  }
+  if (!name?.trim() || !value?.trim()) {
+    return res.status(400).json({ error: "Name and value are required." });
+  }
+  try {
+    const id = addBenchmarkEntry(clientId, category, name, value, recordedAt, notes);
+    res.json({ id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to save benchmark: " + err.message });
+  }
+});
+
+app.delete("/api/benchmarks/:id", requireAuth, (req, res) => {
+  const clientId = req.session.role === "client" ? req.session.clientId : req.query.clientId;
+  if (!clientId || (req.session.role === "coach" && !getClientById(clientId))) {
+    return res.status(400).json({ error: "A valid client is required." });
+  }
+  try {
+    const ok = deleteBenchmarkEntry(req.params.id, clientId);
+    if (!ok) return res.status(404).json({ error: "Entry not found." });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to delete entry: " + err.message });
   }
 });
 

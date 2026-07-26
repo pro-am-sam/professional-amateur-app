@@ -8,6 +8,7 @@ import ClientManagement from "./components/ClientManagement.jsx";
 import ChangePassword from "./components/ChangePassword.jsx";
 import EditProgram from "./components/EditProgram.jsx";
 import ExerciseHistory from "./components/ExerciseHistory.jsx";
+import Benchmarks from "./components/Benchmarks.jsx";
 import CredentialsBanner from "./components/CredentialsBanner.jsx";
 
 // The app moves through stages, one at a time:
@@ -137,6 +138,11 @@ export default function App() {
     setStage("history");
   }
 
+  function handleShowBenchmarks() {
+    setError("");
+    setStage("benchmarks");
+  }
+
   function handleProgramSaved(updatedProgram) {
     setProgram(updatedProgram);
     setStage("view");
@@ -231,6 +237,11 @@ export default function App() {
                 📊 Exercise history
               </button>
             )}
+            {stage !== "benchmarks" && (
+              <button type="button" className="secondary" onClick={handleShowBenchmarks}>
+                🏆 1RMs and Benchmarks
+              </button>
+            )}
             {role === "client" && stage !== "password" && (
               <button type="button" className="secondary" onClick={handleShowPassword}>
                 🔑 Change password
@@ -285,6 +296,8 @@ export default function App() {
           )}
 
           {stage === "history" && <ExerciseHistory role={role} onBack={goHome} />}
+
+          {stage === "benchmarks" && <Benchmarks role={role} onBack={goHome} />}
 
           {stage === "library" && (
             <ProgramLibrary

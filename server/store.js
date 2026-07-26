@@ -56,6 +56,17 @@ db.exec(`
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS benchmarks (
+    id TEXT PRIMARY KEY,
+    client_id TEXT NOT NULL,
+    category TEXT NOT NULL,
+    name TEXT NOT NULL,
+    value TEXT NOT NULL,
+    recorded_at TEXT NOT NULL,
+    notes TEXT,
+    created_at TEXT NOT NULL
+  );
 `);
 
 // Additive-only schema change on a live database: check before altering
@@ -463,4 +474,110 @@ export function upsertComment(id, key, text) {
     comments[c.key] = { text: c.text, updatedAt: c.updated_at };
   }
   return comments;
+}
+
+/* ---------------- Benchmarks (1RMs and named CrossFit benchmarks) ---------------- */
+
+// Curated on purpose - a coach cares about a Back Squat 1RM, nobody needs a
+// bicep curl 1RM tracked. A coach can still log a value under any name they
+// type; once logged it shows up in that client's list going forward (no
+// separate "enabled benchmarks" table needed - the entries ARE the list).
+export const DEFAULT_1RM_LIFTS = [
+  "Back Squat", "Front Squat", "Overhead Squat", "Deadlift",
+  "Snatch", "Clean & Jerk", "Clean", "Jerk",
+  "Strict Press", "Push Press", "Bench Press",
+];
+
+export const DEFAULT_BENCHMARK_WODS = [
+  "Fran", "Grace", "Helen", "Diane", "Annie", "Cindy", "Karen", "Jackie", "Murph", "DT",
+];
+
+export const DEFAULT_MONOSTRUCTURAL = [
+  "Row - 1km", "Row - 2km", "Row - 5km", "Row - 10km",
+  "Run - 100m", "Run - 400m", "Run - 800m", "Run - 1km", "Run - 1 Mile",
+  "Run - 5km", "Run - 10km", "Run - Half Marathon", "Run - Marathon",
+  "Swim - 50m", "Swim - 100m", "Swim - 200m", "Swim - 500m", "Swim - 1km",
+  "Bike - FTP", "Bike - 10km", "Bike - 20km",
+  "Echo Bike - 50cal", "Echo Bike - 100cal", "Echo Bike - 20min",
+];
+
+function defaultNamesFor(category) {
+  if (category === "wod") return DEFAULT_BENCHMARK_WODS;
+  if (category === "mono") return DEFAULT_MONOSTRUCTURAL;
+  return DEFAULT_1RM_LIFTS;
+}
+
+// One row per name: the most recent entry (for the "current PB" list view),
+// plus how many entries exist in total.
+export function listBenchmarks(clientId, category) {
+  const rows = db
+    .prepare(
+      `SELECT name, value, recorded_at, COUNT(*) OVER (PARTITION BY name) AS entry_count,
+              ROW_NUMBER() OVER (PARTITION BY name ORDER BY recorded_at DESC, created_at DESC) AS rn
+       FROM benchmarks WHERE client_id = ? AND category = ?`
+    )
+    .all(clientId, category);
+
+  const latestByName = new Map();
+  for (const row of rows) {
+    if (row.rn === 1) {
+      latestByName.set(row.name, {
+        latestValue: row.value,
+        latestDate: row.recorded_at,
+        entryCount: row.entry_count,
+      });
+    }
+  }
+
+  const names = new Set([...defaultNamesFor(category), ...latestByName.keys()]);
+  return [...names].sort((a, b) => a.localeCompare(b)).map((name) => ({
+    name,
+    latestValue: latestByName.get(name)?.latestValue ?? null,
+    latestDate: latestByName.get(name)?.latestDate ?? null,
+    entryCount: latestByName.get(name)?.entryCount ?? 0,
+  }));
+}
+
+export function getBenchmarkHistory(clientId, category, name) {
+  return db
+    .prepare(
+      `SELECT id, value, recorded_at, notes, created_at FROM benchmarks
+       WHERE client_id = ? AND category = ? AND name = ?
+       ORDER BY recorded_at DESC, created_at DESC`
+    )
+    .all(clientId, category, name)
+    .map((row) => ({
+      id: row.id,
+      value: row.value,
+      recordedAt: row.recorded_at,
+      notes: row.notes,
+      createdAt: row.created_at,
+    }));
+}
+
+export function addBenchmarkEntry(clientId, category, name, value, recordedAt, notes) {
+  const id = randomUUID();
+  db.prepare(
+    `INSERT INTO benchmarks (id, client_id, category, name, value, recorded_at, notes, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    clientId,
+    category,
+    name.trim(),
+    value.trim(),
+    recordedAt || new Date().toISOString().slice(0, 10),
+    notes?.trim() || null,
+    new Date().toISOString()
+  );
+  return id;
+}
+
+// clientId is passed in so a client can only ever delete their own entries -
+// the caller is responsible for scoping it correctly.
+export function deleteBenchmarkEntry(id, clientId) {
+  const result = db
+    .prepare(`DELETE FROM benchmarks WHERE id = ? AND client_id = ?`)
+    .run(id, clientId);
+  return result.changes > 0;
 }
