@@ -11,6 +11,8 @@
   --ink: #0a1e3f;
   --muted: #5c6b85;
   --chalk: #eef3fa;
+  --brand-navy: #101b3d;
+  --brand-accent: #8b5cf6;
   font-family: "Inter", system-ui, sans-serif;
 }
 
@@ -33,20 +35,37 @@ body {
 }
 
 .app-header {
-  background: var(--navy);
+  background: var(--brand-navy);
   color: var(--white);
   margin: 0 -16px 22px;
   padding: 26px 22px 20px;
 }
 
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand-mark {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+}
+
 .app-header h1 {
-  font-family: "Barlow Condensed", sans-serif;
-  font-weight: 700;
-  font-size: clamp(28px, 6vw, 40px);
+  font-family: "Archivo Black", sans-serif;
+  font-weight: 400;
+  font-size: clamp(22px, 5.5vw, 32px);
   text-transform: uppercase;
   letter-spacing: 0.01em;
-  line-height: 0.98;
+  line-height: 1;
   margin: 0;
+}
+
+.brand-accent {
+  color: var(--brand-accent);
 }
 
 .app-subtitle {

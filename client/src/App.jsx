@@ -252,7 +252,12 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <h1>Professional Amateur</h1>
+        <div className="brand-lockup">
+          <img src="/logo.svg" alt="" width="48" height="48" className="brand-mark" />
+          <h1>
+            PROFESSIONAL <span className="brand-accent">AMATEUR</span>
+          </h1>
+        </div>
         <p className="app-subtitle">
           {role === "client" && clientSelf
             ? `Welcome back, ${clientSelf.name}.`
