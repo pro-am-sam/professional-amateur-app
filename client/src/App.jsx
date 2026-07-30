@@ -253,7 +253,7 @@ export default function App() {
     <div className="app-shell">
       <header className="app-header">
         <div className="brand-lockup">
-          <img src="/logo.svg" alt="" width="48" height="48" className="brand-mark" />
+          <img src="/logo-mark.png" alt="" width="48" height="48" className="brand-mark" />
           <h1>
             PROFESSIONAL <span className="brand-accent">AMATEUR</span>
           </h1>
