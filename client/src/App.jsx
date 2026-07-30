@@ -342,6 +342,7 @@ export default function App() {
               role={role}
               onEdit={handleShowEdit}
               onAddWeek={handleShowAddWeek}
+              onReassigned={() => loadProgram(programId)}
             />
           )}
 

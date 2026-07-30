@@ -12,6 +12,8 @@ import {
   getProgram,
   updateProgram,
   appendWeeks,
+  reassignProgram,
+  duplicateProgram,
   listPrograms,
   listExerciseNames,
   findExerciseHistory,
@@ -23,8 +25,12 @@ import {
   createClient,
   resetClientPassword,
   listClients,
+  listArchivedClients,
   getClientById,
+  getActiveClientById,
   getClientDetail,
+  deleteClient,
+  restoreClient,
   verifyClientLogin,
   changeClientPassword,
   createSession,
@@ -203,7 +209,7 @@ app.post("/api/auth/change-password", requireAuth, (req, res) => {
 /* ---------------- Client management (coach-only) ---------------- */
 
 app.get("/api/clients", requireCoach, (req, res) => {
-  res.json({ clients: listClients() });
+  res.json({ clients: listClients(), archivedClients: listArchivedClients() });
 });
 
 app.post("/api/clients", requireCoach, (req, res) => {
@@ -220,6 +226,24 @@ app.post("/api/clients/:id/reset-password", requireCoach, (req, res) => {
     return res.status(404).json({ error: "Client not found." });
   }
   res.json(result);
+});
+
+// Soft-delete: the client is logged out and can't log back in, but their
+// programs/comments/benchmarks are left alone (shown under "Past Programs").
+app.delete("/api/clients/:id", requireCoach, (req, res) => {
+  const ok = deleteClient(req.params.id);
+  if (!ok) {
+    return res.status(404).json({ error: "Client not found (or already deleted)." });
+  }
+  res.json({ ok: true });
+});
+
+app.post("/api/clients/:id/restore", requireCoach, (req, res) => {
+  const ok = restoreClient(req.params.id);
+  if (!ok) {
+    return res.status(404).json({ error: "Client not found (or not deleted)." });
+  }
+  res.json({ ok: true });
 });
 
 app.get("/api/clients/:id", requireCoach, (req, res) => {
@@ -281,7 +305,7 @@ app.post("/api/programs", requireCoach, async (req, res) => {
   if (!program || !Array.isArray(program.weeks)) {
     return res.status(400).json({ error: "No valid program was provided." });
   }
-  if (!clientId || !getClientById(clientId)) {
+  if (!clientId || !getActiveClientById(clientId)) {
     return res.status(400).json({ error: "A valid client is required." });
   }
 
@@ -444,6 +468,44 @@ app.patch("/api/programs/:id", requireCoach, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update program: " + err.message });
+  }
+});
+
+// Move a program onto a different (active) client.
+app.patch("/api/programs/:id/client", requireCoach, (req, res) => {
+  const clientId = req.body?.clientId;
+  if (!clientId) {
+    return res.status(400).json({ error: "A client is required." });
+  }
+  try {
+    const ok = reassignProgram(req.params.id, clientId);
+    if (!ok) {
+      return res.status(400).json({ error: "Could not reassign - check the program and client are valid." });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to reassign program: " + err.message });
+  }
+});
+
+// Copy a program onto a different (active) client as a new program, with no
+// comments carried over - useful for reusable templates (e.g. a "General
+// Programming" client) that get copied out to real clients.
+app.post("/api/programs/:id/duplicate", requireCoach, (req, res) => {
+  const clientId = req.body?.clientId;
+  if (!clientId) {
+    return res.status(400).json({ error: "A client is required." });
+  }
+  try {
+    const id = duplicateProgram(req.params.id, clientId);
+    if (!id) {
+      return res.status(400).json({ error: "Could not duplicate - check the program and client are valid." });
+    }
+    res.json({ id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to duplicate program: " + err.message });
   }
 });
 

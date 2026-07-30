@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import AssignControl from "./AssignControl.jsx";
 
 export default function ProgramView({
   program,
@@ -10,11 +11,36 @@ export default function ProgramView({
   role,
   onEdit,
   onAddWeek,
+  onReassigned,
 }) {
   const weeks = program.weeks;
   const [weekIndex, setWeekIndex] = useState(0);
   const [dayIndex, setDayIndex] = useState(0);
   const [oneRMs, setOneRMs] = useState([]);
+  const [clients, setClients] = useState([]);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignNotice, setAssignNotice] = useState("");
+
+  useEffect(() => {
+    if (role !== "coach") return;
+    fetch("/api/clients")
+      .then(async (res) => {
+        const data = await res.json();
+        if (res.ok) setClients(data.clients);
+      })
+      .catch(() => {});
+  }, [role]);
+
+  function handleAssignDone(action, data) {
+    setAssignOpen(false);
+    if (action === "move") {
+      setAssignNotice(`Moved to ${data.clientName}.`);
+      onReassigned?.();
+    } else {
+      setAssignNotice(`Duplicated to ${data.clientName} — find it under My Programs.`);
+    }
+    setTimeout(() => setAssignNotice(""), 4000);
+  }
 
   // Fetched once so any "% of 1RM" exercise can compute a real weight
   // without a network round-trip per click. Coach needs to say which
@@ -54,7 +80,22 @@ export default function ProgramView({
             ➕ Add week
           </button>
         )}
+        {role === "coach" && (
+          <button type="button" className="secondary" onClick={() => setAssignOpen(!assignOpen)}>
+            🔀 Assign to client
+          </button>
+        )}
       </div>
+
+      {assignNotice && <p className="success-text">{assignNotice}</p>}
+      {role === "coach" && assignOpen && (
+        <AssignControl
+          programId={programId}
+          clients={clients}
+          currentClientId={programMeta?.clientId}
+          onDone={handleAssignDone}
+        />
+      )}
 
       {programMeta?.clientName && (
         <div className="program-meta">

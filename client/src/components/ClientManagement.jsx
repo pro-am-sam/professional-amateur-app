@@ -13,9 +13,11 @@ const CATEGORY_LABELS = { "1rm": "1RM", wod: "Benchmark", mono: "Monostructural"
 
 export default function ClientManagement({ onBack, onSelectProgram }) {
   const [clients, setClients] = useState(null);
+  const [archivedClients, setArchivedClients] = useState([]);
   const [error, setError] = useState("");
   const [revealed, setRevealed] = useState(null); // { name, username, password }
   const [resettingId, setResettingId] = useState(null);
+  const [workingId, setWorkingId] = useState(null); // delete/restore in flight
 
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -30,6 +32,7 @@ export default function ClientManagement({ onBack, onSelectProgram }) {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not load clients.");
         setClients(data.clients);
+        setArchivedClients(data.archivedClients || []);
       })
       .catch((err) => setError(err.message));
   }
@@ -68,7 +71,44 @@ export default function ClientManagement({ onBack, onSelectProgram }) {
     }
   }
 
+  async function deleteClientById(client) {
+    const confirmed = window.confirm(
+      `Delete ${client.name}? They'll be logged out and won't be able to log back in. Their saved programs are kept and will show under "Past Programs" - you can restore them here later if needed.`
+    );
+    if (!confirmed) return;
+    setWorkingId(client.id);
+    setError("");
+    try {
+      const res = await fetch(`/api/clients/${client.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not delete client.");
+      load();
+      if (selectedClientId === client.id) setSelectedClientId(null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setWorkingId(null);
+    }
+  }
+
+  async function restoreClientById(client) {
+    setWorkingId(client.id);
+    setError("");
+    try {
+      const res = await fetch(`/api/clients/${client.id}/restore`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not restore client.");
+      load();
+      if (selectedClientId === client.id) loadDetail(client.id);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setWorkingId(null);
+    }
+  }
+
   if (selectedClientId) {
+    const isArchived = !!detail?.client?.deletedAt;
     return (
       <div className="card">
         <div className="preview-actions-top">
@@ -90,20 +130,49 @@ export default function ClientManagement({ onBack, onSelectProgram }) {
             <h2 className="library-client-name">{detail.client.name}</h2>
             <p className="preview-hint">
               {detail.client.username} ·{" "}
-              {detail.client.hasPassword ? "login set up" : "no password set yet"}
-            </p>
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => resetPassword(detail.client)}
-              disabled={resettingId === detail.client.id}
-            >
-              {resettingId === detail.client.id
-                ? "Resetting..."
+              {isArchived
+                ? `deleted ${formatDateTime(detail.client.deletedAt)}`
                 : detail.client.hasPassword
-                ? "Reset password"
-                : "Set password"}
-            </button>
+                ? "login set up"
+                : "no password set yet"}
+            </p>
+
+            {!isArchived && (
+              <div className="preview-actions-top">
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => resetPassword(detail.client)}
+                  disabled={resettingId === detail.client.id}
+                >
+                  {resettingId === detail.client.id
+                    ? "Resetting..."
+                    : detail.client.hasPassword
+                    ? "Reset password"
+                    : "Set password"}
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => deleteClientById(detail.client)}
+                  disabled={workingId === detail.client.id}
+                >
+                  {workingId === detail.client.id ? "Deleting..." : "🗑 Delete client"}
+                </button>
+              </div>
+            )}
+            {isArchived && (
+              <div className="preview-actions-top">
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => restoreClientById(detail.client)}
+                  disabled={workingId === detail.client.id}
+                >
+                  {workingId === detail.client.id ? "Restoring..." : "↩ Restore client"}
+                </button>
+              </div>
+            )}
 
             <p className="rail-label">Programs</p>
             {detail.programs.length === 0 && (
@@ -209,9 +278,43 @@ export default function ClientManagement({ onBack, onSelectProgram }) {
               >
                 {resettingId === c.id ? "Resetting..." : c.hasPassword ? "Reset password" : "Set password"}
               </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => deleteClientById(c)}
+                disabled={workingId === c.id}
+              >
+                {workingId === c.id ? "Deleting..." : "🗑 Delete"}
+              </button>
             </li>
           ))}
         </ul>
+      )}
+
+      {archivedClients.length > 0 && (
+        <>
+          <h2 className="library-client-name" style={{ marginTop: 24 }}>
+            Archived clients
+          </h2>
+          <ul className="library-list">
+            {archivedClients.map((c) => (
+              <li key={c.id} className="client-row">
+                <button type="button" className="client-row-name" onClick={() => openClient(c.id)}>
+                  <span className="library-item-title">{c.name}</span>
+                  <span className="library-item-meta"> · deleted {formatDateTime(c.deletedAt)}</span>
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => restoreClientById(c)}
+                  disabled={workingId === c.id}
+                >
+                  {workingId === c.id ? "Restoring..." : "↩ Restore"}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </div>
   );

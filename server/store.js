@@ -78,6 +78,7 @@ function ensureColumn(table, column, type) {
   }
 }
 ensureColumn("programs", "client_id", "TEXT");
+ensureColumn("clients", "deleted_at", "TEXT");
 
 function describeWeeks(program) {
   const numbers = (program?.weeks || [])
@@ -220,7 +221,10 @@ export function resetClientPassword(clientId) {
 
 export function listClients() {
   const rows = db
-    .prepare(`SELECT id, name, username, password_hash, created_at FROM clients ORDER BY name COLLATE NOCASE ASC`)
+    .prepare(
+      `SELECT id, name, username, password_hash, created_at FROM clients
+       WHERE deleted_at IS NULL ORDER BY name COLLATE NOCASE ASC`
+    )
     .all();
   return rows.map((r) => ({
     id: r.id,
@@ -231,8 +235,27 @@ export function listClients() {
   }));
 }
 
+// Clients the coach has deleted - kept around (not erased) so their past
+// programs still have somewhere to point to under "Past Programs".
+export function listArchivedClients() {
+  const rows = db
+    .prepare(
+      `SELECT id, name, username, deleted_at FROM clients
+       WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`
+    )
+    .all();
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    username: r.username,
+    deletedAt: r.deleted_at,
+  }));
+}
+
 export function verifyClientLogin(username, password) {
-  const row = db.prepare(`SELECT * FROM clients WHERE username = ?`).get((username || "").trim().toLowerCase());
+  const row = db
+    .prepare(`SELECT * FROM clients WHERE username = ? AND deleted_at IS NULL`)
+    .get((username || "").trim().toLowerCase());
   if (!row || !row.password_hash) return null;
   if (!verifyPassword(password, row.password_hash)) return null;
   return { id: row.id, name: row.name, username: row.username };
@@ -240,6 +263,36 @@ export function verifyClientLogin(username, password) {
 
 export function getClientById(id) {
   return db.prepare(`SELECT id, name, username FROM clients WHERE id = ?`).get(id) || null;
+}
+
+// Stricter lookup for anything that assigns NEW work to a client (saving a
+// program, reassigning, duplicating) - an archived client shouldn't receive
+// anything new, even though their existing records stay fully readable.
+export function getActiveClientById(id) {
+  return (
+    db.prepare(`SELECT id, name, username FROM clients WHERE id = ? AND deleted_at IS NULL`).get(id) || null
+  );
+}
+
+// Soft-delete: the client can no longer log in (and is logged out
+// immediately) and drops off the active client list, but their programs,
+// comments, and benchmarks are left completely untouched so program history
+// survives under "Past Programs".
+export function deleteClient(id) {
+  const result = db
+    .prepare(`UPDATE clients SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`)
+    .run(new Date().toISOString(), id);
+  if (result.changes > 0) {
+    db.prepare(`DELETE FROM sessions WHERE client_id = ?`).run(id);
+  }
+  return result.changes > 0;
+}
+
+export function restoreClient(id) {
+  const result = db
+    .prepare(`UPDATE clients SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL`)
+    .run(id);
+  return result.changes > 0;
 }
 
 export function changeClientPassword(clientId, currentPassword, newPassword) {
@@ -289,7 +342,7 @@ export function deleteSession(token) {
 /* ---------------- Programs ---------------- */
 
 export function saveProgram(program, title, clientId) {
-  const client = getClientById(clientId);
+  const client = getActiveClientById(clientId);
   if (!client) throw new Error("Unknown client.");
 
   const id = randomUUID();
@@ -340,11 +393,15 @@ export function getProgram(id) {
 
 // Pass clientId to scope results to just that client's own programs
 // (what a logged-in client should see); omit it for the coach's full list.
+// Coach's list is ordered with archived-client programs last (still grouped
+// by name within that block) so the frontend can bucket them under
+// "Past Programs" while keeping active clients grouped normally above.
 export function listPrograms(clientId = null) {
   const rows = clientId
     ? db
         .prepare(
-          `SELECT p.id, p.client_id, COALESCE(c.name, p.client_name) AS display_name, p.title, p.week_label, p.saved_at
+          `SELECT p.id, p.client_id, COALESCE(c.name, p.client_name) AS display_name, p.title, p.week_label, p.saved_at,
+                  c.deleted_at
            FROM programs p LEFT JOIN clients c ON c.id = p.client_id
            WHERE p.client_id = ?
            ORDER BY p.saved_at DESC`
@@ -352,9 +409,10 @@ export function listPrograms(clientId = null) {
         .all(clientId)
     : db
         .prepare(
-          `SELECT p.id, p.client_id, COALESCE(c.name, p.client_name) AS display_name, p.title, p.week_label, p.saved_at
+          `SELECT p.id, p.client_id, COALESCE(c.name, p.client_name) AS display_name, p.title, p.week_label, p.saved_at,
+                  c.deleted_at
            FROM programs p LEFT JOIN clients c ON c.id = p.client_id
-           ORDER BY display_name COLLATE NOCASE ASC, p.saved_at DESC`
+           ORDER BY (c.deleted_at IS NOT NULL), display_name COLLATE NOCASE ASC, p.saved_at DESC`
         )
         .all();
 
@@ -362,6 +420,7 @@ export function listPrograms(clientId = null) {
     id: row.id,
     clientId: row.client_id,
     clientName: row.display_name,
+    clientDeleted: !!row.deleted_at,
     title: row.title,
     weekLabel: row.week_label,
     savedAt: row.saved_at,
@@ -451,6 +510,37 @@ export function updateProgram(id, program) {
     id
   );
   return true;
+}
+
+// Moves a program onto a different (active) client - e.g. correcting a
+// mis-assignment, or moving a program off an archived client onto someone
+// current. The target must be an active client; comments stay attached
+// since the program id doesn't change.
+export function reassignProgram(programId, newClientId) {
+  const client = getActiveClientById(newClientId);
+  if (!client) return false;
+  const result = db
+    .prepare(`UPDATE programs SET client_id = ?, client_name = ? WHERE id = ?`)
+    .run(newClientId, client.name, programId);
+  return result.changes > 0;
+}
+
+// Copies a program onto a different (active) client as a brand-new program
+// row - the source (e.g. a reusable "General Programming" template) is left
+// untouched. Comments are intentionally NOT copied: it's a fresh program for
+// that client, so it starts with a clean slate.
+export function duplicateProgram(programId, newClientId) {
+  const client = getActiveClientById(newClientId);
+  if (!client) return null;
+  const row = db.prepare(`SELECT * FROM programs WHERE id = ?`).get(programId);
+  if (!row) return null;
+
+  const id = randomUUID();
+  db.prepare(
+    `INSERT INTO programs (id, client_id, client_name, title, week_label, saved_at, program_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(id, newClientId, client.name, row.title, row.week_label, new Date().toISOString(), row.program_json);
+  return id;
 }
 
 // Coaches typically write a new block of programming starting from "Week 1"
@@ -631,7 +721,7 @@ function resolveCommentLabel(program, key) {
 
 export function getClientDetail(clientId) {
   const client = db
-    .prepare(`SELECT id, name, username, password_hash, created_at FROM clients WHERE id = ?`)
+    .prepare(`SELECT id, name, username, password_hash, created_at, deleted_at FROM clients WHERE id = ?`)
     .get(clientId);
   if (!client) return null;
 
@@ -678,6 +768,7 @@ export function getClientDetail(clientId) {
       username: client.username,
       hasPassword: !!client.password_hash,
       createdAt: client.created_at,
+      deletedAt: client.deleted_at,
     },
     programs,
     recentComments,

@@ -293,6 +293,39 @@ button.client-row-name .library-item-title {
   text-decoration-color: var(--line);
 }
 
+.program-row-name {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  flex: 1 1 auto;
+}
+
+.program-row-name:hover:not(:disabled) {
+  background: none;
+}
+
+.assign-control {
+  width: 100%;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.assign-control-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .library-link {
   margin-bottom: 14px;
 }
