@@ -11,6 +11,15 @@ import ExerciseHistory from "./components/ExerciseHistory.jsx";
 import Benchmarks from "./components/Benchmarks.jsx";
 import CredentialsBanner from "./components/CredentialsBanner.jsx";
 
+// Several stages belong under the same top-level tab (e.g. pasting,
+// previewing, viewing, and editing a program are all part of "My programs" -
+// there's no separate tab for them), so the nav highlights by section rather
+// than by exact stage.
+function sectionForStage(stage) {
+  if (["input", "preview", "view", "edit", "library"].includes(stage)) return "library";
+  return stage;
+}
+
 // The app moves through stages, one at a time:
 //   "input"   - paste raw text (coach only)
 //   "preview" - check Claude's structured read of it before trusting it (coach only)
@@ -249,14 +258,23 @@ export default function App() {
     window.history.replaceState({}, "", url);
   }
 
+  const activeSection = sectionForStage(stage);
+
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div className="brand-lockup">
-          <img src="/logo-mark.png" alt="" width="48" height="48" className="brand-mark" />
-          <h1>
-            PROFESSIONAL <span className="brand-accent">AMATEUR</span>
-          </h1>
+        <div className="header-top">
+          <div className="brand-lockup">
+            <img src="/logo-mark.png" alt="" width="48" height="48" className="brand-mark" />
+            <h1>
+              PROFESSIONAL <span className="brand-accent">AMATEUR</span>
+            </h1>
+          </div>
+          {role && (
+            <button type="button" className="logout-link" onClick={handleLogout}>
+              Log out
+            </button>
+          )}
         </div>
         <p className="app-subtitle">
           {role === "client" && clientSelf
@@ -271,36 +289,47 @@ export default function App() {
 
       {role && (
         <>
-          <div className="nav-row">
-            {stage !== "library" && (
-              <button type="button" className="secondary" onClick={handleShowLibrary}>
-                📂 My programs
-              </button>
-            )}
-            {role === "coach" && stage !== "clients" && (
-              <button type="button" className="secondary" onClick={handleShowClients}>
+          <nav className="tab-row app-nav-tabs">
+            <button
+              type="button"
+              className={`tab ${activeSection === "library" ? "tab-active" : ""}`}
+              onClick={handleShowLibrary}
+            >
+              📂 My programs
+            </button>
+            {role === "coach" && (
+              <button
+                type="button"
+                className={`tab ${activeSection === "clients" ? "tab-active" : ""}`}
+                onClick={handleShowClients}
+              >
                 👥 Manage clients
               </button>
             )}
-            {stage !== "history" && (
-              <button type="button" className="secondary" onClick={handleShowHistory}>
-                📊 Exercise history
-              </button>
-            )}
-            {stage !== "benchmarks" && (
-              <button type="button" className="secondary" onClick={handleShowBenchmarks}>
-                🏆 1RMs and Benchmarks
-              </button>
-            )}
-            {role === "client" && stage !== "password" && (
-              <button type="button" className="secondary" onClick={handleShowPassword}>
+            <button
+              type="button"
+              className={`tab ${activeSection === "history" ? "tab-active" : ""}`}
+              onClick={handleShowHistory}
+            >
+              📊 Exercise history
+            </button>
+            <button
+              type="button"
+              className={`tab ${activeSection === "benchmarks" ? "tab-active" : ""}`}
+              onClick={handleShowBenchmarks}
+            >
+              🏆 1RMs and Benchmarks
+            </button>
+            {role === "client" && (
+              <button
+                type="button"
+                className={`tab ${activeSection === "password" ? "tab-active" : ""}`}
+                onClick={handleShowPassword}
+              >
                 🔑 Change password
               </button>
             )}
-            <button type="button" className="secondary" onClick={handleLogout}>
-              Log out
-            </button>
-          </div>
+          </nav>
 
           {pendingCredentials && (
             <CredentialsBanner

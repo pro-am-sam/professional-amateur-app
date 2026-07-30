@@ -41,10 +41,35 @@ body {
   padding: 26px 22px 20px;
 }
 
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .brand-lockup {
   display: flex;
   align-items: center;
   gap: 14px;
+}
+
+.logout-link {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  color: #b9c7de;
+  font-family: "Inter", sans-serif;
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.logout-link:hover {
+  background: none;
+  color: var(--white);
+  text-decoration: underline;
 }
 
 .brand-mark {
@@ -222,12 +247,6 @@ select.title-input {
   padding-right: 32px;
 }
 
-.nav-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 14px;
-}
 
 .login-tabs {
   margin-bottom: 20px;
@@ -507,6 +526,42 @@ button.library-item:hover:not(:disabled) {
   gap: 7px;
   overflow-x: auto;
   padding: 2px 2px 10px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.tab-row::-webkit-scrollbar {
+  display: none;
+}
+
+.app-nav-tabs {
+  margin-bottom: 18px;
+  padding-bottom: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.app-nav-tabs .tab {
+  flex: 0 0 auto;
+  padding: 10px 14px;
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: none;
+  font-family: "Inter", sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.app-nav-tabs .tab:hover:not(.tab-active) {
+  color: var(--navy-3);
+  background: var(--chalk);
+}
+
+.app-nav-tabs .tab-active {
+  color: var(--navy);
+  border-bottom-color: var(--steel);
 }
 
 .week-tabs .tab {
