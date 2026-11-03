@@ -80,6 +80,32 @@ function ensureColumn(table, column, type) {
 ensureColumn("programs", "client_id", "TEXT");
 ensureColumn("clients", "deleted_at", "TEXT");
 
+// Exercise demo links end up as clickable links for clients, so only plain
+// http/https web links are ever stored - anything else (javascript:, data:,
+// free text) is dropped rather than rendered as a link.
+function cleanVideoUrl(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 2000) return null;
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === "http:" || url.protocol === "https:" ? trimmed : null;
+  } catch {
+    return null;
+  }
+}
+
+// Returns a copy of the program with every exercise's videoUrl cleaned.
+// Only touches exercises that actually have the field, so older programs
+// saved before it existed are left exactly as they were.
+function sanitizeProgram(program) {
+  const clean = structuredClone(program);
+  for (const { exercise } of iterateExercises(clean)) {
+    if ("videoUrl" in exercise) exercise.videoUrl = cleanVideoUrl(exercise.videoUrl);
+  }
+  return clean;
+}
+
 function describeWeeks(program) {
   const numbers = (program?.weeks || [])
     .map((w) => w.weekNumber)
@@ -357,7 +383,7 @@ export function saveProgram(program, title, clientId) {
     (title || "").trim() || weekLabel,
     weekLabel,
     new Date().toISOString(),
-    JSON.stringify(program)
+    JSON.stringify(sanitizeProgram(program))
   );
   return id;
 }
@@ -505,7 +531,7 @@ export function updateProgram(id, program) {
 
   const weekLabel = describeWeeks(program);
   db.prepare(`UPDATE programs SET program_json = ?, week_label = ? WHERE id = ?`).run(
-    JSON.stringify(program),
+    JSON.stringify(sanitizeProgram(program)),
     weekLabel,
     id
   );
@@ -564,7 +590,7 @@ export function appendWeeks(id, newFragment) {
   const offset = existingMax + 1 - newMin;
   const renumbered = newWeeksSorted.map((w) => ({ ...w, weekNumber: (w.weekNumber || 0) + offset }));
 
-  const merged = { ...existing, weeks: [...existing.weeks, ...renumbered] };
+  const merged = sanitizeProgram({ ...existing, weeks: [...existing.weeks, ...renumbered] });
   const weekLabel = describeWeeks(merged);
   db.prepare(`UPDATE programs SET program_json = ?, week_label = ? WHERE id = ?`).run(
     JSON.stringify(merged),

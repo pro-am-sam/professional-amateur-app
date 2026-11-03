@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { normalizeVideoUrl } from "../videoUrl.js";
 
 const NEW_CLIENT = "__new__";
 
@@ -179,6 +180,7 @@ export default function PreviewView({
                           <th>Reps</th>
                           <th>Load</th>
                           <th>Rest</th>
+                          <th>Video</th>
                           <th>Notes</th>
                         </tr>
                       </thead>
@@ -190,6 +192,19 @@ export default function PreviewView({
                             <td>{ex.reps || "—"}</td>
                             <td>{ex.load || "—"}</td>
                             <td>{ex.rest || "—"}</td>
+                            <td>
+                              {normalizeVideoUrl(ex.videoUrl) ? (
+                                <a
+                                  href={normalizeVideoUrl(ex.videoUrl)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  ▶ link
+                                </a>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
                             <td>{ex.notes || "—"}</td>
                           </tr>
                         ))}

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { normalizeVideoUrl } from "../videoUrl.js";
 
 // Content-only editor: exercise/block text fields are editable, but
 // weekNumber, dayOrder, and block letter stay fixed - those are exactly the
@@ -37,18 +38,46 @@ export default function EditProgram({ program, programId, onSaved, onCancel }) {
     });
   }
 
+  // Tidies every demo link (adds https:// if missing) and refuses to save if
+  // one isn't a usable web link, naming the movement so it's easy to find.
+  function prepareForSave() {
+    const next = structuredClone(draft);
+    for (const week of next.weeks) {
+      for (const day of week.days) {
+        for (const block of day.blocks) {
+          for (const ex of block.exercises) {
+            const raw = (ex.videoUrl || "").trim();
+            if (!raw) {
+              ex.videoUrl = null;
+              continue;
+            }
+            const url = normalizeVideoUrl(raw);
+            if (!url) {
+              throw new Error(
+                `The video link for "${ex.name}" (Week ${week.weekNumber}, ${day.dayLabel}) isn't a valid web link. Paste the full address, e.g. https://youtu.be/...`
+              );
+            }
+            ex.videoUrl = url;
+          }
+        }
+      }
+    }
+    return next;
+  }
+
   async function handleSave() {
     setIsSaving(true);
     setError("");
     try {
+      const toSave = prepareForSave();
       const res = await fetch(`/api/programs/${programId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ program: draft }),
+        body: JSON.stringify({ program: toSave }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not save changes.");
-      onSaved(draft);
+      onSaved(toSave);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -195,6 +224,13 @@ function EditExerciseRow({ exercise, onChange }) {
           placeholder="Rest"
         />
       </div>
+      <input
+        className="edit-input"
+        type="url"
+        value={exercise.videoUrl || ""}
+        onChange={(e) => onChange("videoUrl", e.target.value)}
+        placeholder="Demo video link (optional, e.g. a YouTube URL)"
+      />
       <textarea
         className="comment-textarea edit-exercise-notes"
         value={exercise.notes || ""}

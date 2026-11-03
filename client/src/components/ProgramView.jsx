@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import AssignControl from "./AssignControl.jsx";
+import { normalizeVideoUrl } from "../videoUrl.js";
 
 export default function ProgramView({
   program,
@@ -197,6 +198,7 @@ function ExerciseRow({ exercise, oneRMs }) {
             {exercise.reps && <span className="exercise-details"> . {exercise.reps}</span>}
           </span>
           {exercise.load && <span className="exercise-details">{exercise.load}</span>}
+          <DemoLink url={exercise.videoUrl} />
           {exercise.rest && <span className="exercise-rest">Rest {exercise.rest}</span>}
         </div>
         <WeightReveal exercise={exercise} oneRMs={oneRMs} />
@@ -214,11 +216,25 @@ function ExerciseRow({ exercise, oneRMs }) {
       <div className="exercise-main">
         <span className="exercise-name">{exercise.name}</span>
         {details && <span className="exercise-details">{details}</span>}
+        <DemoLink url={exercise.videoUrl} />
         {exercise.rest && <span className="exercise-rest">Rest {exercise.rest}</span>}
       </div>
       <WeightReveal exercise={exercise} oneRMs={oneRMs} />
       {exercise.notes && <NoteToggle notes={exercise.notes} />}
     </li>
+  );
+}
+
+// Opens in a new tab so the client doesn't lose their place in the program.
+// Re-validated here (not just on save) so a stored value can never render as
+// anything other than a plain web link.
+function DemoLink({ url }) {
+  const href = normalizeVideoUrl(url);
+  if (!href) return null;
+  return (
+    <a className="demo-link" href={href} target="_blank" rel="noopener noreferrer">
+      ▶ Demo
+    </a>
   );
 }
 

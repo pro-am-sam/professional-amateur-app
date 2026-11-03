@@ -794,6 +794,26 @@ button.library-item:hover:not(:disabled) {
   color: var(--navy-2);
 }
 
+.demo-link {
+  display: inline-flex;
+  align-items: center;
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--steel);
+  border: 1px solid var(--steel-soft);
+  border-radius: 20px;
+  padding: 2px 9px;
+  text-decoration: none;
+}
+
+.demo-link:hover {
+  background: var(--chalk);
+  color: var(--navy);
+}
+
 .exercise-rest {
   color: var(--muted);
   font-family: "IBM Plex Mono", monospace;

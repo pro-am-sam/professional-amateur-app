@@ -97,6 +97,11 @@ export const programSchema = {
                               description:
                                 "Coaching notes specific to this exercise. Strip NOTE/NOTES label. Null if none (and not already captured in blockNotes).",
                             },
+                            videoUrl: {
+                              type: ["string", "null"],
+                              description:
+                                "A demonstration video/web link (e.g. a YouTube URL) for this exercise, copied exactly as written in the text. Null if no link appears for this exercise. Never invent a link.",
+                            },
                           },
                           required: ["order", "name"],
                         },
@@ -133,6 +138,7 @@ Rules:
 - If a scheme (sets/rounds/timing) applies to the whole block rather than one line, put it in blockScheme (e.g. "Every 5 Mins for 5 Rounds", "E3MOM x 5", "24min"). Otherwise put scheme on the individual exercise.
 - For EMOM-style lines ("Min 1: ...", "MIN 2: ...", "Minute 3 -", etc), set that exercise's scheme field to the spelled-out form "Minute N" (e.g. "Minute 1"), and put the movement name and rep count in the name/reps fields as usual - e.g. "Min 1: 10 Kipping CTB" becomes scheme: "Minute 1", name: "Kipping CTB", reps: "10". For a rest minute (e.g. "MIN 3: REST"), set name to "Rest" and leave reps null.
 - Coaching notes are usually in parentheses, often starting with "NOTE" or "NOTES" (spelling/punctuation varies) - strip that label and keep the note text itself. Attach the note to the block (blockNotes) if it clearly refers to the whole block, or to the specific exercise (notes) if it refers to just one line.
+- If a web link (http/https URL, usually a YouTube demo) appears alongside an exercise - on its line or inside its notes - put the URL, copied exactly as written, in that exercise's videoUrl and remove it from the notes text (don't leave the bare URL in notes; if the note has other text, keep that text). If a link appears in a block's notes and the block has only one exercise, use that exercise's videoUrl; if the block has several exercises and it's unclear which one the link belongs to, attach it to the first exercise. Only use links that literally appear in the text - never invent or guess one.
 - Give every block a short category tag (e.g. "Olympic", "Strength", "Accessory", "Engine", "Gymnastics", "Skill", "Conditioning", "Aerobic base") based on what the movement(s) actually are, even though the source text won't usually label this explicitly.
 - Preserve numbers and units as written (percentages, kg, RPE, time) rather than converting or normalizing them.
 - If something isn't stated, use null rather than guessing.
