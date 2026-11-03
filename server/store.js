@@ -6,7 +6,7 @@ import {
   scryptSync,
   timingSafeEqual,
 } from "crypto";
-import { existsSync, readFileSync, renameSync } from "fs";
+import { copyFileSync, existsSync, readFileSync, renameSync } from "fs";
 import { mkdirSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -192,6 +192,121 @@ function backfillClientsFromLegacyNames() {
   }
 }
 backfillClientsFromLegacyNames();
+
+/* ---------------- One-time migration: links in notes -> videoUrl ---------------- */
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS migrations (
+    name TEXT PRIMARY KEY,
+    ran_at TEXT NOT NULL
+  );
+`);
+
+const URL_IN_TEXT = /https?:\/\/[^\s<>"')\]]+/i;
+
+// Finds the first web link in a note and returns it along with whatever
+// note text is left once the link (and any "Video:" style label or empty
+// brackets it leaves behind) is removed. Null if there's no usable link.
+function extractLink(text) {
+  if (typeof text !== "string") return null;
+  const match = text.match(URL_IN_TEXT);
+  if (!match) return null;
+  const url = cleanVideoUrl(match[0].replace(/[.,;:!?]+$/, ""));
+  if (!url) return null;
+
+  // Take a directly-preceding "Video:" / "Demo -" style label out with the link.
+  const escaped = match[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const withLabel = new RegExp(`(?:\\b(?:video|vid|demo|link|tutorial)\\s*[:\\-–—]\\s*)?${escaped}`, "i");
+
+  let rest = text
+    .replace(withLabel, " ")
+    .replace(/\(\s*\)|\[\s*\]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const wrapped = rest.match(/^\(([^()]*)\)$/);
+  if (wrapped) rest = wrapped[1].trim();
+  rest = rest.replace(/^[\s\-–—:|,;]+|[\s\-–—:|,;]+$/g, "");
+  if (/^(?:video|vid|demo|link|watch|see|tutorial|how[- ]to)?\s*(?:here)?[\s:.\-–—]*$/i.test(rest)) {
+    rest = "";
+  }
+  return { url, notes: rest || null };
+}
+
+// Before the dedicated video field existed, coaches put demo links in notes.
+// Moves them across, conservatively: exercise notes only fill an exercise
+// that has no link yet; a block-level note is only moved when the block has
+// exactly one exercise (otherwise it's unclear whose link it is, so it's
+// left alone). Runs once, and copies the database aside first.
+function migrateNoteLinksToVideoUrl() {
+  const name = "note-links-to-video-url";
+  if (db.prepare(`SELECT 1 FROM migrations WHERE name = ?`).get(name)) return;
+
+  try {
+    const rows = db.prepare(`SELECT id, program_json FROM programs`).all();
+    const updates = [];
+    let linksMoved = 0;
+    let blockLinksLeft = 0;
+
+    for (const row of rows) {
+      const program = JSON.parse(row.program_json);
+      let movedHere = 0;
+
+      for (const week of program.weeks || []) {
+        for (const day of week.days || []) {
+          for (const block of day.blocks || []) {
+            const exercises = block.exercises || [];
+            for (const ex of exercises) {
+              if (ex.videoUrl) continue;
+              const found = extractLink(ex.notes);
+              if (!found) continue;
+              ex.videoUrl = found.url;
+              ex.notes = found.notes;
+              movedHere++;
+            }
+            const blockFound = extractLink(block.blockNotes);
+            if (blockFound) {
+              if (exercises.length === 1 && !exercises[0].videoUrl) {
+                exercises[0].videoUrl = blockFound.url;
+                block.blockNotes = blockFound.notes;
+                movedHere++;
+              } else {
+                blockLinksLeft++;
+              }
+            }
+          }
+        }
+      }
+
+      if (movedHere > 0) {
+        updates.push({ id: row.id, json: JSON.stringify(program) });
+        linksMoved += movedHere;
+      }
+    }
+
+    if (updates.length > 0) {
+      copyFileSync(DB_FILE, `${DB_FILE}.before-video-links.bak`);
+      db.exec("BEGIN");
+      try {
+        const update = db.prepare(`UPDATE programs SET program_json = ? WHERE id = ?`);
+        for (const u of updates) update.run(u.json, u.id);
+        db.exec("COMMIT");
+      } catch (err) {
+        db.exec("ROLLBACK");
+        throw err;
+      }
+    }
+
+    db.prepare(`INSERT INTO migrations (name, ran_at) VALUES (?, ?)`).run(name, new Date().toISOString());
+    console.log(
+      `Video-link migration: moved ${linksMoved} link(s) from notes into the video field across ${updates.length} program(s); ${blockLinksLeft} block-level link(s) left in notes (ambiguous).`
+    );
+  } catch (err) {
+    // Never block the server from starting over this - it will just retry
+    // on the next start (the backup, if made, is untouched).
+    console.error("Video-link migration failed, will retry next start:", err);
+  }
+}
+migrateNoteLinksToVideoUrl();
 
 /* ---------------- Password hashing ---------------- */
 
